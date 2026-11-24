@@ -12,11 +12,13 @@ name: Push cs2api snapshot
 
 on:
   schedule:
-    # Private repo: GitHub bills at least 1 minute per run and gives 2 000/month.
-    # A run costs ~2 billed minutes, so 45 minutes ≈ 32 runs/day ≈ 1 900/month.
-    # Make the repo public (nothing secret is in it) and use '*/5 * * * *' instead
-    # for near-live data with unlimited free minutes.
-    - cron: '*/45 * * * *'
+    # A run takes ~25 s but GitHub bills it as a full minute, and a private repo
+    # gets 2 000 free minutes/month:
+    #   */5  = 288/day = ~8 600/month  → needs a public repo (unlimited minutes)
+    #   */15 =  96/day = ~2 880/month  → too much for private
+    #   */25 =  58/day = ~1 740/month  → current setting, private-safe
+    # Cron is best-effort: GitHub can start a scheduled run several minutes late.
+    - cron: '*/25 * * * *'
   workflow_dispatch:
 
 permissions:
