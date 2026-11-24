@@ -121,6 +121,15 @@ One-time setup after pushing this project to GitHub:
 
 Without that workflow the site still works — it just serves the last snapshot you pushed.
 
+Things measured from a real runner (worth remembering if it ever breaks):
+
+- Cloudflare challenges `chrome131` there — the profile that works from a home connection —
+  while `chrome116` returns the full page, so the workflow pins `HLTV_IMPERSONATE: chrome116`.
+  Which profile is accepted depends on the requesting network, hence the env override.
+- `data/teams.json` is a committed seed of the team-country directory, so a fresh checkout does not
+  have to re-fetch hundreds of match pages before its first push.
+- `.github/workflows/probe.yml` (manual trigger) prints which profiles a runner may use.
+
 While your PC is on, `npm run push:watch` does the same locally every 3 minutes (a push takes
 ~6 s once the team cache is warm), and `scripts/push-once.cmd` can be registered with Windows Task
 Scheduler so it survives reboots:
