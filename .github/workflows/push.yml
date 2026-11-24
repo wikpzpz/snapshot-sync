@@ -12,7 +12,10 @@ name: Push cs2api snapshot
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    # Private repo: GitHub bills at least 1 minute per run and gives 2 000/month,
+    # so 30 minutes (~1 440 min/month) stays free. Make the repo public and this
+    # can become '*/5 * * * *' for near-live data at no cost.
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
