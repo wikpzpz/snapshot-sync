@@ -12,10 +12,11 @@ name: Push cs2api snapshot
 
 on:
   schedule:
-    # Private repo: GitHub bills at least 1 minute per run and gives 2 000/month,
-    # so 30 minutes (~1 440 min/month) stays free. Make the repo public and this
-    # can become '*/5 * * * *' for near-live data at no cost.
-    - cron: '*/30 * * * *'
+    # Private repo: GitHub bills at least 1 minute per run and gives 2 000/month.
+    # A run costs ~2 billed minutes, so 45 minutes ≈ 32 runs/day ≈ 1 900/month.
+    # Make the repo public (nothing secret is in it) and use '*/5 * * * *' instead
+    # for near-live data with unlimited free minutes.
+    - cron: '*/45 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -47,7 +48,7 @@ jobs:
           restore-keys: teams-
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --omit=dev
 
       - name: Install curl-impersonate
         run: npm run setup:curl
