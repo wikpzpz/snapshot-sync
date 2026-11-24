@@ -93,6 +93,11 @@
 
       .empty { color: var(--muted); font-size: 14px; }
 
+      #recent-panel { margin-top: 18px; }
+      .match .meta .score { font-size: 14px; font-weight: 700; color: var(--text); }
+      .match .meta .ev { font-size: 11px; }
+      .match .teams .lost { color: var(--muted); font-weight: 500; }
+
       details { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
       summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       pre { overflow: auto; max-height: 380px; font-size: 12px; color: #b7c4ce; }
@@ -134,6 +139,11 @@
             <div id="events"></div>
           </section>
         </div>
+
+        <section id="recent-panel" hidden>
+          <h3 id="recent-title">Recent results</h3>
+          <div id="recent"></div>
+        </section>
 
         <details>
           <summary>Raw JSON from the API</summary>
@@ -205,7 +215,8 @@
         setStatus(`Loading ${name}…`);
         $('go').disabled = true;
         try {
-          renderTeam(await api(`/api/country/${encodeURIComponent(name)}`));
+          const data = await api(`/api/country/${encodeURIComponent(name)}`);
+          renderTeam(data, { country: name });
           setStatus('');
         } catch (error) {
           setStatus(error.message, true);
@@ -214,7 +225,66 @@
         }
       }
 
-      function renderTeam(data) {
+      const fmtPast = (ms) => {
+        if (ms == null) return '';
+        const d = new Date(ms);
+        const day = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+        const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        return `<b>${time}</b>${day}`;
+      };
+
+      // The API sends a `recent` row set with every team/country view: finished
+      // matches from the last `recentDays` days, newest first.
+      function renderRecent(rows, days, opts = {}) {
+        const panel = $('recent-panel');
+        const box = $('recent');
+        if (!Array.isArray(rows)) {
+          panel.hidden = true;
+          return;
+        }
+        panel.hidden = false;
+        $('recent-title').textContent = `Recent results · last ${days} day${days === 1 ? '' : 's'}`;
+        box.innerHTML = rows.length ? '' : '<p class="empty">No finished matches in that window.</p>';
+        const wanted = (opts.team ?? '').trim().toLowerCase();
+        const isTeam = (t) => wanted && (t?.name ?? '').trim().toLowerCase() === wanted;
+
+        for (const row of rows) {
+          const el = document.createElement('div');
+          el.className = 'match';
+          const s = row.score ?? {};
+          el.innerHTML = `
+            <div class="when">${fmtPast(row.startsAt)}</div>
+            <div>
+              <a href="${row.url}" target="_blank" rel="noreferrer">
+                <div class="teams">
+                  ${row.team1?.logo ? `<img src="${row.team1.logo}" alt="" />` : ''}<span class="n1"></span>
+                  ${row.team1?.flag ? `<img class="flag" src="${row.team1.flag}" alt="" />` : ''}
+                  <span class="vs">vs</span>
+                  ${row.team2?.logo ? `<img src="${row.team2.logo}" alt="" />` : ''}<span class="n2"></span>
+                  ${row.team2?.flag ? `<img class="flag" src="${row.team2.flag}" alt="" />` : ''}
+                </div>
+              </a>
+            </div>
+            <div class="meta">
+              <span class="score"></span><br />
+              <span class="ev"></span>
+            </div>`;
+          const n1 = el.querySelector('.n1');
+          const n2 = el.querySelector('.n2');
+          n1.textContent = row.team1?.name ?? 'TBD';
+          n2.textContent = row.team2?.name ?? 'TBD';
+          const mine1 = opts.country ? row.countryTeam === 'team1' || row.countryTeam === 'both' : isTeam(row.team1);
+          const mine2 = opts.country ? row.countryTeam === 'team2' || row.countryTeam === 'both' : isTeam(row.team2);
+          if (mine1) n1.classList.add('mine');
+          if (mine2) n2.classList.add('mine');
+          el.querySelector('.score').textContent =
+            s.team1 != null && s.team2 != null ? `${s.team1} – ${s.team2}` : '–';
+          el.querySelector('.ev').textContent = row.event?.name ?? '';
+          box.appendChild(el);
+        }
+      }
+
+      function renderTeam(data, opts = {}) {
         const { team, upcoming, events } = data;
         $('team-panel').hidden = false;
         $('team-logo').src = team.logo ?? '';
@@ -233,7 +303,8 @@
         }
         where.appendChild(document.createTextNode(team.country ?? ''));
         const snapshot = data.updatedAt ? ` · snapshot ${new Date(data.updatedAt).toLocaleString()}` : '';
-        $('team-counts').textContent = `${upcoming.length} match${upcoming.length === 1 ? '' : 'es'} · ${events.length} event${events.length === 1 ? '' : 's'}${snapshot}`;
+        const resultCount = Array.isArray(data.recent) ? ` · ${data.recent.length} result${data.recent.length === 1 ? '' : 's'}` : '';
+        $('team-counts').textContent = `${upcoming.length} match${upcoming.length === 1 ? '' : 'es'} · ${events.length} event${events.length === 1 ? '' : 's'}${resultCount}${snapshot}`;
 
         const matches = $('matches');
         matches.innerHTML = upcoming.length ? '' : '<p class="empty">No scheduled matches in the team\'s fixture table.</p>';
@@ -284,6 +355,7 @@
           evBox.appendChild(el);
         }
 
+        renderRecent(data.recent, data.recentDays ?? 3, opts);
         $('raw').textContent = JSON.stringify(data, null, 2);
       }
 
@@ -294,7 +366,7 @@
           // Local API looks teams up by id; the hosted snapshot API by name.
         const data = await api(`/api/team/${id}?name=${encodeURIComponent(name)}`);
           lastPayload = data;
-          renderTeam(data);
+          renderTeam(data, { team: name });
           setStatus('');
         } catch (error) {
           setStatus(error.message, true);
