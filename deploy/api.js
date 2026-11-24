@@ -19,6 +19,7 @@
  *   GET  /api/country/:name        every upcoming match of that country's teams
  *   GET  /api/country/:name/results results row: finished matches, last `days` days
  *   POST /api/push                 replace snapshots (header: x-push-key)
+ *   POST /api/refresh?key=         start the snapshot job (header x-refresh-key)
  */
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -299,6 +300,34 @@ async function handleApi(request, url, env) {
     }
     if (!stored.length) return json({ error: 'Nothing to store (send matches/events/results).' }, 400);
     return json({ ok: true, stored, at: Date.now() });
+  }
+
+  // Kick the snapshot job on demand, for a scheduler that can reach this site but
+  // has no GitHub token of its own. Needs REFRESH_KEY (shared secret) and GH_TOKEN
+  // (a fine-grained token with Actions: write) as Worker secrets.
+  if (url.pathname === '/api/refresh') {
+    if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+    const key = request.headers.get('x-refresh-key') ?? url.searchParams.get('key') ?? '';
+    if (!env.REFRESH_KEY || key !== env.REFRESH_KEY) return json({ error: 'Unauthorized.' }, 401);
+    if (!env.GH_TOKEN) return json({ error: 'GH_TOKEN is not set on this Worker.' }, 503);
+
+    const res = await fetch(
+      'https://api.github.com/repos/wikpzpz/snapshot-sync/actions/workflows/push.yml/dispatches',
+      {
+        method: 'POST',
+        headers: {
+          authorization: ,
+          accept: 'application/vnd.github+json',
+          'content-type': 'application/json',
+          'user-agent': 'snapshot-sync',
+        },
+        body: JSON.stringify({ ref: 'main' }),
+      },
+    );
+    if (res.status !== 204) {
+      return json({ dispatched: false, status: res.status, error: (await res.text()).slice(0, 300) }, 502);
+    }
+    return json({ dispatched: true, at: new Date().toISOString() }, 202);
   }
 
   if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405);
