@@ -316,7 +316,7 @@ async function handleApi(request, url, env) {
       {
         method: 'POST',
         headers: {
-          authorization: ,
+          authorization: 'Bearer ' + env.GH_TOKEN,
           accept: 'application/vnd.github+json',
           'content-type': 'application/json',
           'user-agent': 'snapshot-sync',
