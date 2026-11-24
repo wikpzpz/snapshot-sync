@@ -4,10 +4,10 @@
 # renderer because Workers share egress IPs), so this runner does it: it installs
 # curl-impersonate, runs `npm run push`, and the Worker's D1 snapshot is replaced.
 #
-# Minutes: a public repo has unlimited Actions minutes, so the 5-minute schedule
-# below is free. A PRIVATE repo gets 2 000 free minutes/month and GitHub bills a
+# Minutes: a public repo has unlimited Actions minutes, so a 5-minute schedule
+# would be free. A PRIVATE repo gets 2 000 free minutes/month and GitHub bills a
 # run as at least one minute — 288 runs/day would burn through that in a week, so
-# change the cron to '*/30 * * * *' (1 440 min/month) if the repo stays private.
+# the schedule stays at roughly every 25 minutes (1 740 min/month).
 name: Push cs2api snapshot
 
 on:
@@ -16,9 +16,15 @@ on:
     # gets 2 000 free minutes/month:
     #   */5  = 288/day = ~8 600/month  → needs a public repo (unlimited minutes)
     #   */15 =  96/day = ~2 880/month  → too much for private
-    #   */25 =  58/day = ~1 740/month  → current setting, private-safe
-    # Cron is best-effort: GitHub can start a scheduled run several minutes late.
-    - cron: '*/25 * * * *'
+    #   3x/hour      =  72/day = ~2 160/month
+    #   current      =  58/day = ~1 740/month  → private-safe
+    #
+    # The schedule event is best-effort, not a timer with an SLA: GitHub's shared
+    # cron dispatcher can start a run minutes or (on a brand-new private repo, while
+    # the cron is still being registered) hours late, and a skipped slot leaves no
+    # run at all. The top of the hour is the busiest moment, so the minutes here
+    # deliberately avoid :00 and are spread across the hour.
+    - cron: '4,29,54 * * * *'
   workflow_dispatch:
 
 permissions:

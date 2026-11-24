@@ -109,7 +109,7 @@ POST /api/push                 (header: x-push-key) replace snapshots
 
 ### Keeping it fresh for free (no PC needed)
 
-`.github/workflows/push.yml` runs `npm run push` on a GitHub runner every 25 minutes. GitHub runners
+`.github/workflows/push.yml` runs `npm run push` on a GitHub runner three times an hour (minutes `:04`, `:29`, `:54` UTC — about every 25 minutes, which keeps a private repo inside its 2 000 free minutes). GitHub's cron scheduler is best-effort, not a timer: on a brand-new private repo the first scheduled runs can be hours late, and a busy slot is skipped without leaving a failed run, which is why the minutes avoid `:00` (the busiest moment of the hour). Trigger a run by hand any time with **Run workflow**. GitHub runners
 have their own IPs and can install curl-impersonate, which is exactly what a Cloudflare-protected
 site needs; public repos get unlimited Actions minutes, and a private repo's 2 000 free minutes
 cover a 20-minute cadence.
