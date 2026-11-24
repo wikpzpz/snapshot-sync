@@ -28,6 +28,9 @@ concurrency:
 
 env:
   SITE_URL: https://cs2api-461yz8-preview.freebuff.site
+  # GitHub's runners are challenged on chrome131 but served by chrome116
+  # (probed: 131/124/120/101 challenged, 116/110/107/104/100/99 fine).
+  HLTV_IMPERSONATE: chrome116
 
 jobs:
   push:

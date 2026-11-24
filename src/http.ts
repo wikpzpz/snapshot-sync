@@ -4,6 +4,17 @@ import { curlFetch, resolveCurlBinary, DEFAULT_PROFILES } from './curl.ts';
 
 export const BASE_URL = 'https://www.hltv.org';
 
+/** `HLTV_IMPERSONATE=chrome116,chrome110` to pin the fallback order per network. */
+function envProfiles(): string[] | undefined {
+  const raw = process.env.HLTV_IMPERSONATE?.trim();
+  if (!raw) return undefined;
+  const list = raw
+    .split(',')
+    .map((profile) => profile.trim())
+    .filter(Boolean);
+  return list.length ? list : undefined;
+}
+
 export const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
@@ -78,9 +89,10 @@ export class HltvHttp {
     this.opts = {
       mode: options.mode ?? 'auto',
       // Try the whole profile list by default: which fingerprint Cloudflare
-      // accepts depends on the network the request comes from (a residential
-      // IP likes chrome131, a GitHub runner may not).
-      impersonate: options.impersonate ?? DEFAULT_PROFILES,
+      // accepts depends on the network the request comes from. Measured:
+      // chrome131 works from a residential IP, chrome116 from GitHub's runners
+      // (where 131/124/120/101 are challenged). Override with HLTV_IMPERSONATE.
+      impersonate: options.impersonate ?? envProfiles() ?? DEFAULT_PROFILES,
       headless: options.headless ?? true,
       allowHeadfulFallback: options.allowHeadfulFallback ?? true,
       timeoutMs: options.timeoutMs ?? 30_000,

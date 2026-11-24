@@ -1,0 +1,602 @@
+{
+  "33": {
+    "name": "33",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "drama": {
+    "name": "Drama",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "phantomacademy": {
+    "name": "Phantom Academy",
+    "country": "Poland",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PL.gif"
+  },
+  "heroic": {
+    "name": "HEROIC",
+    "country": "Sweden",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/SE.gif"
+  },
+  "m80": {
+    "name": "M80",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "flyquestred": {
+    "name": "FlyQuest RED",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "milk": {
+    "name": "Milk",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "empire": {
+    "name": "EMPIRE",
+    "country": "North America",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/NAM.gif"
+  },
+  "kodex": {
+    "name": "KODEX",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "detonate": {
+    "name": "DETONATE",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "northforge": {
+    "name": "NorthForge",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "eternalfire": {
+    "name": "Eternal Fire",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "100thieves": {
+    "name": "100 Thieves",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "parivision": {
+    "name": "PARIVISION",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "faze": {
+    "name": "FaZe",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "wildcard": {
+    "name": "Wildcard",
+    "country": "North America",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/NAM.gif"
+  },
+  "lynnvision": {
+    "name": "Lynn Vision",
+    "country": "China",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/CN.gif"
+  },
+  "imperial": {
+    "name": "Imperial",
+    "country": "Brazil",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/BR.gif"
+  },
+  "flyquest": {
+    "name": "FlyQuest",
+    "country": "Australia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/AU.gif"
+  },
+  "9z": {
+    "name": "9z",
+    "country": "South America",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/SAM.gif"
+  },
+  "dendele": {
+    "name": "DENDELE",
+    "country": "Brazil",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/BR.gif"
+  },
+  "ninjasinpyjamas": {
+    "name": "Ninjas in Pyjamas",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "liquid": {
+    "name": "Liquid",
+    "country": "North America",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/NAM.gif"
+  },
+  "bcgame": {
+    "name": "BC.Game",
+    "country": "Other",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/WORLD.gif"
+  },
+  "chinggiswarriors": {
+    "name": "Chinggis Warriors",
+    "country": "Mongolia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/MN.gif"
+  },
+  "nordicpartners": {
+    "name": "Nordic Partners",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "donstu": {
+    "name": "DONSTU",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "lfo10": {
+    "name": "LFO 10",
+    "country": "Sweden",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/SE.gif"
+  },
+  "elusive": {
+    "name": "Elusive",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "villainous": {
+    "name": "Villainous",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "mouznxt": {
+    "name": "MOUZ NXT",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "masonic": {
+    "name": "MASONIC",
+    "country": "Denmark",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/DK.gif"
+  },
+  "azuolas": {
+    "name": "Azuolas",
+    "country": "Lithuania",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/LT.gif"
+  },
+  "honvd": {
+    "name": "Honvéd",
+    "country": "Hungary",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/HU.gif"
+  },
+  "lunacy": {
+    "name": "Lunacy",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "megoshort": {
+    "name": "megoshort",
+    "country": "Sweden",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/SE.gif"
+  },
+  "fnatic": {
+    "name": "fnatic",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "brute": {
+    "name": "BRUTE",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "betclic": {
+    "name": "Betclic",
+    "country": "Poland",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PL.gif"
+  },
+  "alliance": {
+    "name": "Alliance",
+    "country": "Sweden",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/SE.gif"
+  },
+  "b8": {
+    "name": "B8",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "pure": {
+    "name": "PURE",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "sangal": {
+    "name": "Sangal",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "iberiansoul": {
+    "name": "Iberian Soul",
+    "country": "Spain",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/ES.gif"
+  },
+  "innercircle": {
+    "name": "Inner Circle",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "nexus": {
+    "name": "Nexus",
+    "country": "Romania",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RO.gif"
+  },
+  "envy": {
+    "name": "Envy",
+    "country": "France",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/FR.gif"
+  },
+  "metizport": {
+    "name": "Metizport",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "big": {
+    "name": "BIG",
+    "country": "Germany",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/DE.gif"
+  },
+  "eyeballers": {
+    "name": "EYEBALLERS",
+    "country": "Sweden",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/SE.gif"
+  },
+  "gamerlegion": {
+    "name": "GamerLegion",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "saw": {
+    "name": "SAW",
+    "country": "Portugal",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PT.gif"
+  },
+  "legendary100": {
+    "name": "Legendary100",
+    "country": "Romania",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RO.gif"
+  },
+  "ryvex": {
+    "name": "Ryvex",
+    "country": "United Kingdom",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/GB.gif"
+  },
+  "lilmix": {
+    "name": "Lilmix",
+    "country": "Sweden",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/SE.gif"
+  },
+  "maybe": {
+    "name": "MAYBE",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "marsborne": {
+    "name": "Marsborne",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "overtakesector": {
+    "name": "Overtake Sector",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "feistein": {
+    "name": "Feistein",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "withoutaroof": {
+    "name": "Without a Roof",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "farmville": {
+    "name": "FarmVille",
+    "country": "North America",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/NAM.gif"
+  },
+  "wantedgoons": {
+    "name": "Wanted Goons",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "celestial": {
+    "name": "Celestial",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "ninefly": {
+    "name": "NineFly",
+    "country": "Canada",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/CA.gif"
+  },
+  "addice": {
+    "name": "Addice",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "nz": {
+    "name": "NZ",
+    "country": "China",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/CN.gif"
+  },
+  "infurity": {
+    "name": "INFURITY",
+    "country": "Norway",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/NO.gif"
+  },
+  "virtuspro": {
+    "name": "Virtus.pro",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "illyrians": {
+    "name": "Illyrians",
+    "country": "Kosovo",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/XK.gif"
+  },
+  "g2ares": {
+    "name": "G2 Ares",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "phantom": {
+    "name": "Phantom",
+    "country": "Poland",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PL.gif"
+  },
+  "kuusamo": {
+    "name": "KUUSAMO",
+    "country": "Finland",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/FI.gif"
+  },
+  "noirverse": {
+    "name": "Noir Verse",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "regain": {
+    "name": "regain",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "iowastormboar": {
+    "name": "Iowa Stormboar",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "nxg": {
+    "name": "NXG",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "alka": {
+    "name": "ALKA",
+    "country": "Brazil",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/BR.gif"
+  },
+  "rush": {
+    "name": "RUSH",
+    "country": "Brazil",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/BR.gif"
+  },
+  "axial": {
+    "name": "Axial",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "meianoite": {
+    "name": "MEIA NOITE",
+    "country": "Brazil",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/BR.gif"
+  },
+  "lag": {
+    "name": "LAG",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "swolepatrol": {
+    "name": "Swole Patrol",
+    "country": "United States",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/US.gif"
+  },
+  "rbls": {
+    "name": "RBLS",
+    "country": "Portugal",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PT.gif"
+  },
+  "famalico": {
+    "name": "Famalicão",
+    "country": "Portugal",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PT.gif"
+  },
+  "sinners": {
+    "name": "SINNERS",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "butterfly": {
+    "name": "Butterfly",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "blackphoenix": {
+    "name": "Black Phoenix",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "icprospect": {
+    "name": "IC Prospect",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "b8academy": {
+    "name": "B8 Academy",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "nucleartigeres": {
+    "name": "Nuclear TigeRES",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "forzereload": {
+    "name": "FORZE Reload",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "never": {
+    "name": "NEVER",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "monkeys": {
+    "name": "Monkeys",
+    "country": "Czech Republic",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/CZ.gif"
+  },
+  "unity": {
+    "name": "UNiTY",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "infinite": {
+    "name": "INFINITE",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "exrustec": {
+    "name": "ex-RUSTEC",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "topg": {
+    "name": "TOP G",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "wbt": {
+    "name": "WBT",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "bandachuya": {
+    "name": "Banda Chuya",
+    "country": "Poland",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PL.gif"
+  },
+  "losninos": {
+    "name": "LOS NINOS",
+    "country": "Brazil",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/BR.gif"
+  },
+  "bbl": {
+    "name": "BBL",
+    "country": "Denmark",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/DK.gif"
+  },
+  "luntiki": {
+    "name": "LUNTIKI",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "dusty": {
+    "name": "DUSTY",
+    "country": "Iceland",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/IS.gif"
+  },
+  "r": {
+    "name": "Þór",
+    "country": "Iceland",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/IS.gif"
+  },
+  "baks": {
+    "name": "BAKS",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "state": {
+    "name": "STATE",
+    "country": "Denmark",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/DK.gif"
+  },
+  "eac": {
+    "name": "EAC",
+    "country": "Denmark",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/DK.gif"
+  },
+  "enjoy": {
+    "name": "Enjoy",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "hypetech": {
+    "name": "Hype Tech",
+    "country": "Serbia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RS.gif"
+  },
+  "xi": {
+    "name": "XI",
+    "country": "Denmark",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/DK.gif"
+  },
+  "abt": {
+    "name": "ABT",
+    "country": "Portugal",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/PT.gif"
+  },
+  "nt": {
+    "name": "NT",
+    "country": "Ukraine",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/UA.gif"
+  },
+  "leo": {
+    "name": "Leo",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "balkanoutlaws": {
+    "name": "Balkan Outlaws",
+    "country": "Romania",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RO.gif"
+  },
+  "exinox": {
+    "name": "ex-INOX",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "private": {
+    "name": "PRIVATE",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "genone": {
+    "name": "GenOne",
+    "country": "France",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/FR.gif"
+  },
+  "luminosity": {
+    "name": "Luminosity",
+    "country": "Europe",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/EU.gif"
+  },
+  "justplayers": {
+    "name": "Just Players",
+    "country": "Russia",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/RU.gif"
+  },
+  "runeeaters": {
+    "name": "Rune Eaters",
+    "country": "Kazakhstan",
+    "flag": "https://www.hltv.org/img/static/flags/30x20/KZ.gif"
+  }
+}

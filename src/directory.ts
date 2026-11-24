@@ -6,16 +6,21 @@ import { clean } from './parse.ts';
 import type { MatchCard, TeamDirectoryEntry, TeamEvent, TeamRef } from './types.ts';
 
 const FILE = '.cache/teams.json';
+/** Committed seed, so a fresh CI checkout starts with the countries we know. */
+const SEED_FILE = 'data/teams.json';
 
 /** Team names are matched loosely: "BC.Game" and "bcgame" are the same team. */
 export const teamKey = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export async function loadDirectory(): Promise<Record<string, TeamDirectoryEntry>> {
-  try {
-    return JSON.parse(await readFile(FILE, 'utf8')) as Record<string, TeamDirectoryEntry>;
-  } catch {
-    return {};
+  for (const file of [FILE, SEED_FILE]) {
+    try {
+      return JSON.parse(await readFile(file, 'utf8')) as Record<string, TeamDirectoryEntry>;
+    } catch {
+      // try the next one
+    }
   }
+  return {};
 }
 
 export async function saveDirectory(directory: Record<string, TeamDirectoryEntry>): Promise<void> {
