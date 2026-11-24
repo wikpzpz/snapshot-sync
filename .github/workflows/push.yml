@@ -1,31 +1,29 @@
-# Keeps the hosted cs2api snapshot fresh for free.
+# Keeps the hosted cs2api snapshot fresh for free, with no PC involved.
 #
-# The Worker cannot scrape hltv.org (Cloudflare 403 for its fetch, 429 from every
-# free renderer because Workers share egress IPs), so a GitHub runner does it:
-# it installs curl-impersonate, runs `npm run push`, and the Worker's D1 snapshot
-# is replaced. Public repos have unlimited Actions minutes; a private repo's
-# 2000 free minutes/month comfortably covers a 20-minute cadence (~2500 s/day).
+# The Worker cannot scrape hltv.org (403 for its fetch, 429 from every free
+# renderer because Workers share egress IPs), so this runner does it: it installs
+# curl-impersonate, runs `npm run push`, and the Worker's D1 snapshot is replaced.
 #
-# One-time setup:
-#   1. Push this project to a GitHub repository.
-#   2. Repo → Settings → Secrets and variables → Actions → New repository secret
-#      Name: PUSH_KEY   Value: the contents of .secrets/push-key
-#   3. Actions tab → "Push cs2api snapshot" → Run workflow (first run builds the
-#      team-country directory, so it is the slow one).
+# Minutes: a public repo has unlimited Actions minutes, so the 5-minute schedule
+# below is free. A PRIVATE repo gets 2 000 free minutes/month and GitHub bills a
+# run as at least one minute — 288 runs/day would burn through that in a week, so
+# change the cron to '*/30 * * * *' (1 440 min/month) if the repo stays private.
 name: Push cs2api snapshot
 
 on:
   schedule:
-    # Every 5 minutes = GitHub's minimum, i.e. as close to live as this can get.
-    # Actions often starts the run a few minutes late. A warm directory cache
-    # makes a run ~40 s; public repos have unlimited minutes, while a private
-    # repo should use '*/45 * * * *' to stay inside its 2 000 free minutes.
-    - cron: '*/5 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: push-snapshot
   cancel-in-progress: false
+
+env:
+  SITE_URL: https://cs2api-461yz8-preview.freebuff.site
 
 jobs:
   push:
@@ -55,3 +53,8 @@ jobs:
         env:
           PUSH_KEY: ${{ secrets.PUSH_KEY }}
         run: npm run push
+
+      - name: Confirm the site serves the new snapshot
+        run: |
+          curl -fsS "$SITE_URL/api/meta" | tee meta.json
+          node -e "const m=require('./meta.json').snapshots; console.log('matches', m.matches.count, 'at', m.matches.updatedAt, '| teams', m.teams && m.teams.count)"

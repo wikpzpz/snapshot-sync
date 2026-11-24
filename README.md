@@ -121,6 +121,18 @@ One-time setup after pushing this project to GitHub:
 
 Without that workflow the site still works — it just serves the last snapshot you pushed.
 
+While your PC is on, `npm run push:watch` does the same locally every 3 minutes (a push takes
+~6 s once the team cache is warm), and `scripts/push-once.cmd` can be registered with Windows Task
+Scheduler so it survives reboots:
+
+```bat
+schtasks /create /tn "cs2api push" /sc minute /mo 3 /tr "\"%CD%\scripts\push-once.cmd\"" /f
+schtasks /delete /tn "cs2api push" /f
+```
+
+Faster than a few minutes is not worth it: hltv.org starts answering with a Cloudflare challenge
+above roughly one page request per second, and its own match data does not change faster than that.
+
 ### Countries
 
 Team countries are not in `/matches` cards: they live on each match page (`teamsBox`), so
@@ -139,8 +151,45 @@ Trade-offs:
   team page; `team.url` is `null` there. The local API uses ids and returns the full profile.
 
 ```bash
-npm run build:worker   # esbuild bundle → deploy/worker.js (7 KB)
+npm run build:worker   # esbuild bundle → deploy/worker.js (~10 KB)
 ```
+
+## Using it from your own site (e.g. secs.se, on Cloudflare)
+
+**Do not upload this folder to Cloudflare.** It is a Node/TypeScript project: it needs a real
+filesystem, the curl-impersonate binary and esbuild's build step, none of which Cloudflare hosting
+runs. The only deployable artefact is `deploy/worker.js` (the API Worker), and even that cannot
+scrape HLTV from Cloudflare (see above), so it would still need a pusher.
+
+The practical options, cheapest first:
+
+1. **Call the hosted API directly.** CORS is `*`, so nothing to deploy:
+
+   ```js
+   const res = await fetch('https://cs2api-461yz8-preview.freebuff.site/api/country/Sweden');
+   ```
+
+2. **Proxy it onto your own domain** with `deploy/proxy-worker.js` (10 lines, no DB, no key):
+   paste it into a new Worker in the Cloudflare dashboard, then add the route `secs.se/api/*`.
+   Your site then calls `/api/country/Sweden` on its own origin.
+
+   On Cloudflare **Pages** instead of a Worker route, put the same code in
+   `functions/api/[[path]].js`:
+
+   ```js
+   const ORIGIN = 'https://cs2api-461yz8-preview.freebuff.site';
+   export const onRequest = ({ request }) => {
+     const url = new URL(request.url);
+     return fetch(ORIGIN + url.pathname + url.search, request);
+   };
+   ```
+
+3. **Attach a custom domain to the hosted site** (e.g. `api.secs.se`) in the Freebuff Sites panel and
+   point your DNS at it, then call `https://api.secs.se/api/...` — no proxy code at all.
+
+4. **Run the whole thing on your own Cloudflare account** (own D1 + own `PUSH_KEY` + the GitHub
+   Action against it): full control, but you would deploy `deploy/worker.js` as your own Worker,
+   create the D1 binding, and set `SITE_URL` when pushing. Only worth it if you want to own the data.
 
 ## Getting past Cloudflare
 

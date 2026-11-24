@@ -91,6 +91,27 @@ export function parseMatchCards(html: string): MatchCard[] {
   const cards: MatchCard[] = [];
   const seen = new Set<number>();
 
+  // Pinned and live cards only expose `data-event-id` on their wrapper, never
+  // the event name, so map every /events/{id}/ link on the page once.
+  const eventInfo = new Map<number, { name: string | null; logo: string | null; strong: boolean }>();
+  $('a[href*="/events/"]').each((_, el) => {
+    const node = $(el);
+    const id = toInt(pathOf(node.attr('href')).match(EVENT_HREF)?.[1] ?? null);
+    if (!id) return;
+    const img = node.find('img').first();
+    // The real headline lives in `.event-headline-text`; links in the live strip
+    // only render "Live<event>" as bare text, so they must not win.
+    const headline = nodeText($, node.find('.event-headline-text').first(), ['.event-type-tag']);
+    const strong = !!headline;
+    const existing = eventInfo.get(id);
+    if (existing && existing.strong && !strong) return;
+    eventInfo.set(id, {
+      name: headline ?? clean(img.attr('alt')) ?? existing?.name ?? null,
+      logo: imgUrl(img.attr('src')) ?? existing?.logo ?? null,
+      strong,
+    });
+  });
+
   // A live card nests `.match` inside `.match`, so only take outermost cards.
   $('.match').each((_, el) => {
     const card = $(el);
@@ -100,16 +121,21 @@ export function parseMatchCards(html: string): MatchCard[] {
     if (!id || seen.has(id)) return;
     seen.add(id);
 
+    const wrapper = card.closest('[data-match-wrapper]');
     const eventNode = card.find('.match-event').first();
+    const eventId = toInt(wrapper.attr('data-event-id')) ?? toInt(eventNode.attr('data-event-id'));
+    const known = eventId != null ? eventInfo.get(eventId) : undefined;
     const eventName =
       clean(eventNode.attr('data-event-headline')) ??
-      nodeText($, eventNode, ['.match-stage', '.match-event-logo-container']);
+      nodeText($, eventNode, ['.match-stage', '.match-event-logo-container']) ??
+      known?.name ??
+      null;
     const eventLogoNode = eventNode.find('img').first();
     const event = eventRef(
       $,
-      eventNode.attr('data-event-id') ? `/events/${eventNode.attr('data-event-id')}/x` : undefined,
+      eventId != null ? `/events/${eventId}/x` : undefined,
       eventName,
-      imgUrl(eventLogoNode.attr('src')),
+      imgUrl(eventLogoNode.attr('src')) ?? known?.logo ?? null,
     );
 
     const metas = card
@@ -117,10 +143,17 @@ export function parseMatchCards(html: string): MatchCard[] {
       .map((__, m) => clean($(m).text()))
       .get()
       .filter((text): text is string => !!text);
-    const live = metas.some((text) => /^live$/i.test(text)) || card.find('[class*="match-meta-live"]').length > 0;
+    const live =
+      metas.some((text) => /^live$/i.test(text)) ||
+      card.find('[class*="match-meta-live"]').length > 0 ||
+      wrapper.attr('live') === 'true';
     const format = metas.find((text) => /^bo\d$/i.test(text)) ?? null;
     const [team1, team2] = teamsFromCard($, card);
-    const stars = card.find('.match-rating i.fa-star:not(.faded)').length;
+    // The wrapper carries the real team ids: team1="7175" team2="12376".
+    if (team1 && team1.id == null) team1.id = toInt(wrapper.attr('team1'));
+    if (team2 && team2.id == null) team2.id = toInt(wrapper.attr('team2'));
+    const starsAttr = toInt(wrapper.attr('data-stars')) ?? 0;
+    const stars = card.find('.match-rating i.fa-star:not(.faded)').length || starsAttr;
 
     cards.push({
       id,

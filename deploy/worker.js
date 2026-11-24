@@ -103,8 +103,26 @@ function teamView(name, matches, events) {
     if (!key || !uniqueEvents.has(key)) continue;
     uniqueEvents.set(key, { ...uniqueEvents.get(key), startsAt: event.startsAt ?? null, endsAt: event.endsAt ?? null });
   }
+  let teamId = null;
+  for (const match of mine) {
+    if (norm(match.team1?.name) === wanted && match.team1?.id != null) {
+      teamId = match.team1.id;
+      break;
+    }
+    if (norm(match.team2?.name) === wanted && match.team2?.id != null) {
+      teamId = match.team2.id;
+      break;
+    }
+  }
   return {
-    team: { id: 0, name, url: null, logo, country: null, flag: null },
+    team: {
+      id: teamId ?? 0,
+      name,
+      url: teamId ? `https://www.hltv.org/team/${teamId}/x` : null,
+      logo,
+      country: null,
+      flag: null
+    },
     upcoming: mine.sort((a, b) => (a.startsAt ?? 0) - (b.startsAt ?? 0)),
     events: Array.from(uniqueEvents.values())
   };
@@ -193,6 +211,21 @@ async function handleApi(request, url, env) {
     const index = teamIndex(directory?.data);
     return json(snapshot.data.map((match) => enrichMatch(match, index)));
   }
+  const matchById = url.pathname.match(/^\/api\/match\/(\d+)$/);
+  if (matchById) {
+    const id = Number(matchById[1]);
+    const [matches, results, directory] = await Promise.all([
+      readSnapshot(env, "matches"),
+      readSnapshot(env, "results"),
+      readSnapshot(env, "teams")
+    ]);
+    const index = teamIndex(directory?.data);
+    const card = (matches?.data ?? []).find((match) => match.id === id);
+    if (card) return json(enrichMatch(card, index));
+    const result = (results?.data ?? []).find((row) => row.id === id);
+    if (result) return json(enrichMatch(result, index));
+    return json({ error: `Match ${id} is not in the snapshot (it may have scrolled past the 241 cards / 100 results).` }, 404);
+  }
   if (url.pathname === "/api/events") {
     const snapshot = await readSnapshot(env, "events");
     if (!snapshot) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
@@ -243,6 +276,12 @@ async function handleApi(request, url, env) {
     if (!matches) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
     const view = teamView(name, matches.data, events?.data);
     const index = teamIndex(directory?.data);
+    const entry = index.get(teamKey(view.team.name));
+    if (entry) {
+      view.team.country = entry.country ?? null;
+      view.team.flag = entry.flag ?? null;
+      if (entry.id) view.team.id = entry.id;
+    }
     return json({
       ...view,
       upcoming: view.upcoming.map((match) => enrichMatch(match, index)),

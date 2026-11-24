@@ -5,3 +5,5 @@ node_modules/
 .secrets/
 .server.log
 .server.pid
+.watch.log
+.watch.pid
