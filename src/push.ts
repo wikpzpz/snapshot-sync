@@ -12,7 +12,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { HltvClient } from './client.ts';
-import { resolveDirectory } from './directory.ts';
+import { learnRankedTeams, loadDirectory, resolveDirectory } from './directory.ts';
 
 const SITE_URL = (process.env.SITE_URL ?? 'https://cs2api-461yz8-preview.freebuff.site').replace(/\/$/, '');
 
@@ -38,19 +38,35 @@ async function runOnce(): Promise<void> {
     const { ongoing, upcoming } = await client.getEvents();
     console.log(`  events: ${ongoing.length + upcoming.length} (${ongoing.length} ongoing, ${upcoming.length} upcoming)`);
 
-    const results = await client.getResults({ offset: 0 });
+    // Four pages of results ≈ the last few days, so the API can answer
+    // "what did this team play in the last 3 days".
+    const results = [];
+    for (const offset of [0, 100, 200, 300]) {
+      try {
+        const page = await client.getResults({ offset });
+        if (!page.length) break;
+        results.push(...page);
+      } catch (error) {
+        console.warn(`  results page ${offset} failed: ${String(error).slice(0, 80)}`);
+      }
+    }
     console.log(`  results: ${results.length}`);
 
     // One match page covers two teams' countries; only unknown teams are fetched.
     // Finished results are included because many upcoming cards are still TBD.
-    const { directory, fetched, missing } = await resolveDirectory(client, [...matches, ...results], {
+    const { fetched, missing } = await resolveDirectory(client, [...matches, ...results], {
       // Learned teams are cached, so a capped run simply continues next time.
       limit: 150,
       onProgress: (done, total) => {
         if (done % 25 === 0 || done === total) console.log(`  team countries: ${done}/${total} match pages`);
       },
     });
-    const teams = Object.values(directory);
+    // Every ranked team gets a country too, so a country view is not limited to
+    // the teams that happen to have a fixture right now.
+    const ranked = await learnRankedTeams(client, { limit: 40 });
+    if (ranked.added) console.log(`  ranked teams: +${ranked.added} (${ranked.missing} still unknown)`);
+
+    const teams = Object.values(await loadDirectory());
     console.log(`  teams: ${teams.length} known (${fetched} new)`);
     if (missing.length) console.log(`  ! no country yet for ${missing.length} teams (they fill in on later pushes)`);
 

@@ -48,6 +48,16 @@ const toNumber = (value: string | undefined | null): number | null => {
 export const pathOf = (href: string | undefined | null): string =>
   (href ?? '').replace(/^https?:\/\/[^/]+/i, '');
 
+/**
+ * Team names scraped from anchors sometimes carry trailing junk such as
+ * `Alliance#37#48` (an internal seed). Strip it so lookups still match.
+ */
+export const cleanName = (value: string | null | undefined): string | null => {
+  const text = clean(value);
+  if (!text) return null;
+  return text.replace(/#\d+(#\d+)*$/, '').trim() || null;
+};
+
 export const imgUrl = (src: string | undefined): string | null => {
   if (!src) return null;
   if (src.startsWith('//')) return 'https:' + src;

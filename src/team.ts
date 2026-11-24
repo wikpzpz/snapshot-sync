@@ -13,6 +13,66 @@ import type {
 } from './types.ts';
 
 const TEAM_HREF = /^\/team\/(\d+)\//;
+
+/**
+ * Country/flag/logo from the head of https://www.hltv.org/team/{id}/{slug}.
+ *
+ * Only the first ~100 KB matter, so callers can pass `maxBytes` and skip the
+ * other 5 MB of match history.
+ */
+export function parseTeamProfileHead(html: string): {
+  country: string | null;
+  flag: string | null;
+  logo: string | null;
+} {
+  const $ = load(html);
+  const box = $('.team-country').first();
+  return {
+    country: clean(box.find('img').first().attr('alt')) ?? clean(box.text()) ?? null,
+    flag: imgUrl(box.find('img').first().attr('src')),
+    logo: imgUrl($('.teamlogo, .team-logo img').first().attr('src')),
+  };
+}
+
+/**
+ * Every ranked team: https://www.hltv.org/ranking/teams lists ~240 in one page.
+ *
+ * The block also shows the five starters with their flags, which is the only
+ * cheap source of a team's *core* nationality (its org region is a separate,
+ * often misleading label — fnatic says "Ukraine", Ninjas in Pyjamas "Europe").
+ */
+export function parseRanking(html: string): Array<{ id: number; name: string; players: string[] }> {
+  const $ = load(html);
+  const teams: Array<{ id: number; name: string; players: string[] }> = [];
+  const seen = new Set<number>();
+
+  $('.ranked-team').each((_, el) => {
+    const node = $(el);
+    const href = pathOf(node.find('a[href*="/team/"]').first().attr('href'));
+    const id = toInt(href.match(TEAM_HREF)?.[1] ?? null);
+    const name = clean(node.find('.name').first().text());
+    if (!id || !name || seen.has(id)) return;
+    seen.add(id);
+    const players = node
+      .find('.lineup img[src*="/flags/"], .rankingNicknames img[src*="/flags/"], .nick img[src*="/flags/"]')
+      .map((__, img) => clean($(img).attr('alt')))
+      .get()
+      .filter((text): text is string => !!text);
+    teams.push({ id, name, players });
+  });
+
+  return teams;
+}
+
+/** Majority nationality of a roster — "Swedish core" means a Swedish majority. */
+export function coreCountry(players: string[]): { country: string | null; count: number; size: number } {
+  const counts = new Map<string, number>();
+  for (const country of players) counts.set(country, (counts.get(country) ?? 0) + 1);
+  let best: [string, number] | null = null;
+  for (const entry of counts) if (!best || entry[1] > best[1]) best = entry;
+  if (!best || best[1] * 2 <= players.length) return { country: null, count: best?.[1] ?? 0, size: players.length };
+  return { country: best[0], count: best[1], size: players.length };
+}
 const MATCH_HREF = /^\/matches\/(\d+)\//;
 const EVENT_HREF = /^\/events\/(\d+)\//;
 

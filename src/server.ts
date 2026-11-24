@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HltvClient } from './client.ts';
-import { countryView, enrichMatch, loadDirectory, searchCountries } from './directory.ts';
+import { countryView, enrichMatch, loadDirectory, searchCountries, teamKey } from './directory.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(HERE, '..', 'public');
@@ -57,10 +57,25 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
       sendJson(res, 400, { error: 'Type at least 2 characters.' });
       return;
     }
-    const teams = await cached(`search:${query.toLowerCase()}`, () => client.searchTeams(query));
-    // Countries come from the local team directory built by `npm run push`.
-    const directory = await cached('directory', () => loadDirectory());
-    sendJson(res, 200, { query, teams: teams.slice(0, 8), countries: searchCountries(directory, query) });
+    const [teams, directory] = await Promise.all([
+      cached(`search:${query.toLowerCase()}`, () => client.searchTeams(query)),
+      // Countries and fixture-less teams come from the team directory.
+      cached('directory', () => loadDirectory()),
+    ]);
+    const wanted = query.toLowerCase();
+    const known = Object.values(directory)
+      .filter((team) => team.name.toLowerCase().includes(wanted))
+      .map((team) => ({
+        id: team.id ?? 0,
+        name: team.name,
+        url: team.id ? `https://www.hltv.org/team/${team.id}/x` : null,
+        logo: team.logo ?? null,
+        country: team.country ?? null,
+        flag: team.flag ?? null,
+      }));
+    const knownKeys = new Set(known.map((team) => teamKey(team.name)));
+    const merged = [...known, ...teams.filter((team) => !knownKeys.has(teamKey(team.name)))];
+    sendJson(res, 200, { query, teams: merged.slice(0, 8), countries: searchCountries(directory, query) });
     return;
   }
 

@@ -71,6 +71,9 @@ const norm = (value) => String(value ?? '').toLowerCase().trim();
 /** Team names are matched loosely: "BC.Game" and "bcgame" are the same team. */
 const teamKey = (name) => norm(name).replace(/[^a-z0-9]/g, '');
 
+/** Roster core first, then the org/region label HLTV prints. */
+const homeCountry = (team) => (team ? team.core || team.country || null : null);
+
 /** name key -> team directory entry ({ name, country, flag }). */
 function teamIndex(teams) {
   const index = new Map();
@@ -87,7 +90,7 @@ function teamIndex(teams) {
 function enrichMatch(match, index, country) {
   const entryOf = (team) => (team && team.name ? index.get(teamKey(team.name)) ?? null : null);
   const withCountry = (team) =>
-    team ? { ...team, country: entryOf(team)?.country ?? null, flag: entryOf(team)?.flag ?? null } : null;
+    team ? { ...team, country: homeCountry(entryOf(team)), flag: entryOf(team)?.flag ?? null } : null;
 
   const team1 = withCountry(match.team1);
   const team2 = withCountry(match.team2);
@@ -193,7 +196,7 @@ function searchCountries(teams, query) {
   if (!wanted || wanted.length < 3) return [];
   const hits = new Map();
   for (const team of teams ?? []) {
-    const country = String(team?.country ?? '').trim();
+    const country = String(homeCountry(team) ?? '').trim();
     const key = norm(country);
     if (!country || key === 'other' || key === 'world' || !key.includes(wanted)) continue;
     const hit = hits.get(key) ?? { name: country, teams: 0, flag: team.flag ?? null };
@@ -208,14 +211,14 @@ function searchCountries(teams, query) {
 function countryView(country, matches, teams) {
   const wanted = norm(country);
   const index = teamIndex(teams);
-  const countryOf = (name) => (name ? norm(index.get(teamKey(name))?.country) : '');
+  const countryOf = (name) => (name ? norm(homeCountry(index.get(teamKey(name)))) : '');
 
   const upcoming = (matches ?? [])
     .filter((match) => countryOf(match.team1?.name) === wanted || countryOf(match.team2?.name) === wanted)
     .map((match) => enrichMatch(match, index, country))
     .sort((a, b) => (a.startsAt ?? 0) - (b.startsAt ?? 0));
 
-  const members = (teams ?? []).filter((team) => norm(team.country) === wanted);
+  const members = (teams ?? []).filter((team) => norm(homeCountry(team)) === wanted);
 
   const events = new Map();
   for (const match of upcoming) {
@@ -314,10 +317,19 @@ async function handleApi(request, url, env) {
   }
 
   if (url.pathname === '/api/results') {
-    const snapshot = await readSnapshot(env, 'results');
+    const [snapshot, directory] = await Promise.all([readSnapshot(env, 'results'), readSnapshot(env, 'teams')]);
     if (!snapshot) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
+    const index = teamIndex(directory?.data);
+    const days = Number(url.searchParams.get('days') ?? 0) || 0;
+    const team = norm(url.searchParams.get('team'));
+    const since = days > 0 ? Date.now() - days * 86_400_000 : 0;
+    const rows = snapshot.data.filter(
+      (row) =>
+        (row.startsAt ?? 0) >= since &&
+        (!team || norm(row.team1?.name) === team || norm(row.team2?.name) === team),
+    );
     const offset = Number(url.searchParams.get('offset') ?? 0) || 0;
-    return json(snapshot.data.slice(offset, offset + 100));
+    return json(rows.slice(offset, offset + 100).map((row) => enrichMatch(row, index)));
   }
 
   if (url.pathname === '/api/search') {
@@ -328,7 +340,21 @@ async function handleApi(request, url, env) {
       readSnapshot(env, 'events'),
       readSnapshot(env, 'teams'),
     ]);
-    const teams = collectTeams(matches?.data, events?.data).filter((team) => norm(team.name).includes(query));
+    // Teams with a fixture come from the match cards; the rest come from the
+    // directory, so a team without an upcoming match is still searchable.
+    const fromMatches = collectTeams(matches?.data, events?.data).filter((team) => norm(team.name).includes(query));
+    const fromDirectory = (directory?.data ?? [])
+      .filter((team) => team && team.name && norm(team.name).includes(query))
+      .map((team) => ({
+        id: team.id ?? 0,
+        name: team.name,
+        url: team.id ? `https://www.hltv.org/team/${team.id}/x` : null,
+        logo: team.logo ?? null,
+        country: team.country ?? null,
+        flag: team.flag ?? null,
+      }));
+    const knownNames = new Set(fromDirectory.map((team) => teamKey(team.name)));
+    const teams = [...fromDirectory, ...fromMatches.filter((team) => !knownNames.has(teamKey(team.name)))];
     return json({
       query,
       teams: teams.slice(0, 8),
@@ -354,10 +380,11 @@ async function handleApi(request, url, env) {
   if (teamMatch) {
     const name = url.searchParams.get('name');
     if (!name) return json({ error: 'This hosted API looks teams up by name: /api/team/0?name=FaZe.' }, 400);
-    const [matches, events, directory] = await Promise.all([
+    const [matches, events, directory, results] = await Promise.all([
       readSnapshot(env, 'matches'),
       readSnapshot(env, 'events'),
       readSnapshot(env, 'teams'),
+      readSnapshot(env, 'results'),
     ]);
     if (!matches) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
     const view = teamView(name, matches.data, events?.data);
@@ -365,13 +392,30 @@ async function handleApi(request, url, env) {
     // The team profile itself gets the same country/flag/id as its matches.
     const entry = index.get(teamKey(view.team.name));
     if (entry) {
-      view.team.country = entry.country ?? null;
+      view.team.country = homeCountry(entry);
+      view.team.region = entry.country ?? null;
+      view.team.core = entry.core ?? null;
       view.team.flag = entry.flag ?? null;
-      if (entry.id) view.team.id = entry.id;
+      if (entry.id) {
+        view.team.id = entry.id;
+        view.team.url = `https://www.hltv.org/team/${entry.id}/x`;
+      }
+      if (entry.logo) view.team.logo = entry.logo;
     }
+    // Finished matches from the last three days, newest first.
+    const wanted = norm(name);
+    const recent = (results?.data ?? [])
+      .filter(
+        (row) =>
+          (row.startsAt ?? 0) >= Date.now() - 3 * 86_400_000 &&
+          (norm(row.team1?.name) === wanted || norm(row.team2?.name) === wanted),
+      )
+      .sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0))
+      .map((row) => enrichMatch(row, index));
     return json({
       ...view,
       upcoming: view.upcoming.map((match) => enrichMatch(match, index)),
+      recent,
       updatedAt: new Date(matches.updatedAt).toISOString(),
     });
   }

@@ -146,6 +146,18 @@ export interface TeamDirectoryEntry {
   country: string | null;
   /** 30x20 flag gif, derived from the 300x200 banner. */
   flag: string | null;
+  /** HLTV team id, when the entry came from a match page or the ranking. */
+  id?: number | null;
+  /** Team logo, when known. */
+  logo?: string | null;
+  /**
+   * Majority nationality of the starting five — the "core". This differs from
+   * `country` (the org/region HLTV prints): fnatic's region is "Ukraine" while
+   * its core can be Swedish. Country views prefer this when present.
+   */
+  core?: string | null;
+  coreCount?: number | null;
+  coreSize?: number | null;
 }
 
 /** https://www.hltv.org/team/{id}/{slug} */

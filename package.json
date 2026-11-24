@@ -11,6 +11,7 @@
     "start": "node --experimental-strip-types src/server.ts",
     "setup:curl": "node scripts/install-curl-impersonate.mjs",
     "push": "node --experimental-strip-types src/push.ts",
+    "teams": "node --experimental-strip-types src/teams.ts",
     "push:watch": "node --experimental-strip-types src/push.ts --watch 3",
     "build:worker": "esbuild deploy/api.js --bundle --format=esm --platform=browser --target=es2022 --outfile=deploy/worker.js --conditions=browser --main-fields=browser,module,main",
     "matches": "node --experimental-strip-types src/cli.ts matches",

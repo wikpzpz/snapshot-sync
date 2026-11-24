@@ -123,21 +123,21 @@ export class HltvHttp {
   }
 
   /** Fetch HTML, serialized through a single queue. */
-  getHtml(pathOrUrl: string): Promise<string> {
+  getHtml(pathOrUrl: string, options: { maxBytes?: number } = {}): Promise<string> {
     const url = HltvHttp.resolve(pathOrUrl);
-    const run = this.queue.then(() => this.perform(url));
+    const run = this.queue.then(() => this.perform(url, options.maxBytes));
     this.queue = run.catch(() => undefined);
     return run;
   }
 
-  private async perform(url: string): Promise<string> {
+  private async perform(url: string, maxBytes?: number): Promise<string> {
     this.requests += 1;
     if (this.mode === 'fetch') return this.fetchHtml(url);
-    if (this.mode === 'curl') return this.curlHtml(url);
+    if (this.mode === 'curl') return this.curlHtml(url, maxBytes);
     return this.browserHtml(url);
   }
 
-  private async curlHtml(url: string): Promise<string> {
+  private async curlHtml(url: string, maxBytes?: number): Promise<string> {
     const binary = resolveCurlBinary(this.opts.curlPath);
     if (!binary) {
       throw new Error('curl-impersonate not found; run `npm run setup:curl` or use mode "browser".');
@@ -146,6 +146,7 @@ export class HltvHttp {
       binary,
       timeoutMs: this.opts.timeoutMs,
       impersonate: this.opts.impersonate,
+      maxBytes,
     });
     if (this.opts.delayMs > 0) await sleep(this.opts.delayMs);
     return html;
