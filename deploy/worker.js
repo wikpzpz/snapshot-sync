@@ -218,8 +218,25 @@ async function handleApi(request, url, env) {
       return json({ error: "Method not allowed." }, 405);
     }
     const reply = (payload, status) => new Response(JSON.stringify(payload, null, 2), { status, headers: NO_STORE });
-    const key = request.headers.get("x-refresh-key") ?? url.searchParams.get("key") ?? "";
-    if (!env.REFRESH_KEY || key !== env.REFRESH_KEY) return reply({ error: "Unauthorized." }, 401);
+    const bearer = (request.headers.get("authorization") ?? "").replace(/^Bearers+/i, "");
+    const key = request.headers.get("x-refresh-key") ?? request.headers.get("x-refresh") ?? url.searchParams.get("key") ?? url.searchParams.get("k") ?? bearer ?? "";
+    if (!env.REFRESH_KEY || key !== env.REFRESH_KEY) {
+      return reply(
+        {
+          error: "Unauthorized.",
+          hint: "Send the key as ?key=<key>, or the x-refresh-key header, or Authorization: Bearer <key>.",
+          got: {
+            queryKey: url.searchParams.has("key"),
+            queryK: url.searchParams.has("k"),
+            headerXRefreshKey: request.headers.has("x-refresh-key"),
+            headerXRefresh: request.headers.has("x-refresh"),
+            bearer: !!request.headers.get("authorization"),
+            keyLength: String(key).length
+          }
+        },
+        401
+      );
+    }
     if (!env.GH_TOKEN) return reply({ error: "GH_TOKEN is not set on this Worker." }, 503);
     const res = await fetch(
       "https://api.github.com/repos/wikpzpz/snapshot-sync/actions/workflows/push.yml/dispatches",
