@@ -306,10 +306,17 @@ async function handleApi(request, url, env) {
   // has no GitHub token of its own. Needs REFRESH_KEY (shared secret) and GH_TOKEN
   // (a fine-grained token with Actions: write) as Worker secrets.
   if (url.pathname === '/api/refresh') {
-    if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
+    // A scheduler may only be able to send a plain GET, so both work; the key is
+    // what guards it. Replies are no-store so a cached 202 cannot swallow a later
+    // trigger.
+    if (request.method !== 'POST' && request.method !== 'GET') {
+      return json({ error: 'Method not allowed.' }, 405);
+    }
+    const reply = (payload, status) =>
+      new Response(JSON.stringify(payload, null, 2), { status, headers: NO_STORE });
     const key = request.headers.get('x-refresh-key') ?? url.searchParams.get('key') ?? '';
-    if (!env.REFRESH_KEY || key !== env.REFRESH_KEY) return json({ error: 'Unauthorized.' }, 401);
-    if (!env.GH_TOKEN) return json({ error: 'GH_TOKEN is not set on this Worker.' }, 503);
+    if (!env.REFRESH_KEY || key !== env.REFRESH_KEY) return reply({ error: 'Unauthorized.' }, 401);
+    if (!env.GH_TOKEN) return reply({ error: 'GH_TOKEN is not set on this Worker.' }, 503);
 
     const res = await fetch(
       'https://api.github.com/repos/wikpzpz/snapshot-sync/actions/workflows/push.yml/dispatches',
@@ -325,9 +332,9 @@ async function handleApi(request, url, env) {
       },
     );
     if (res.status !== 204) {
-      return json({ dispatched: false, status: res.status, error: (await res.text()).slice(0, 300) }, 502);
+      return reply({ dispatched: false, status: res.status, error: (await res.text()).slice(0, 300) }, 502);
     }
-    return json({ dispatched: true, at: new Date().toISOString() }, 202);
+    return reply({ dispatched: true, at: new Date().toISOString() }, 202);
   }
 
   if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405);

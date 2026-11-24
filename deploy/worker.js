@@ -214,10 +214,13 @@ async function handleApi(request, url, env) {
     return json({ ok: true, stored, at: Date.now() });
   }
   if (url.pathname === "/api/refresh") {
-    if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+    if (request.method !== "POST" && request.method !== "GET") {
+      return json({ error: "Method not allowed." }, 405);
+    }
+    const reply = (payload, status) => new Response(JSON.stringify(payload, null, 2), { status, headers: NO_STORE });
     const key = request.headers.get("x-refresh-key") ?? url.searchParams.get("key") ?? "";
-    if (!env.REFRESH_KEY || key !== env.REFRESH_KEY) return json({ error: "Unauthorized." }, 401);
-    if (!env.GH_TOKEN) return json({ error: "GH_TOKEN is not set on this Worker." }, 503);
+    if (!env.REFRESH_KEY || key !== env.REFRESH_KEY) return reply({ error: "Unauthorized." }, 401);
+    if (!env.GH_TOKEN) return reply({ error: "GH_TOKEN is not set on this Worker." }, 503);
     const res = await fetch(
       "https://api.github.com/repos/wikpzpz/snapshot-sync/actions/workflows/push.yml/dispatches",
       {
@@ -232,9 +235,9 @@ async function handleApi(request, url, env) {
       }
     );
     if (res.status !== 204) {
-      return json({ dispatched: false, status: res.status, error: (await res.text()).slice(0, 300) }, 502);
+      return reply({ dispatched: false, status: res.status, error: (await res.text()).slice(0, 300) }, 502);
     }
-    return json({ dispatched: true, at: (/* @__PURE__ */ new Date()).toISOString() }, 202);
+    return reply({ dispatched: true, at: (/* @__PURE__ */ new Date()).toISOString() }, 202);
   }
   if (request.method !== "GET") return json({ error: "Method not allowed." }, 405);
   if (url.pathname === "/api/meta") {
