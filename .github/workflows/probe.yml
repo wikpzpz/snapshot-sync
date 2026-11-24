@@ -1,0 +1,33 @@
+# Temporary diagnostic: which TLS fingerprints does hltv.org accept from a
+# GitHub runner? Delete once the default profile order is settled.
+name: Probe hltv profiles
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --omit=dev
+      - run: npm run setup:curl
+      - name: Try every profile
+        run: |
+          set +e
+          curl -s --max-time 20 https://api.ipify.org && echo " <- runner IP"
+          for p in chrome131 chrome124 chrome120 chrome116 chrome110 chrome107 chrome104 chrome101 chrome100 chrome99; do
+            body=$(.tools/curl-impersonate --impersonate "$p" --compressed -sS -L --max-time 30 https://www.hltv.org/matches 2>/dev/null)
+            status=$?
+            bytes=$(printf '%s' "$body" | wc -c)
+            challenge=$(printf '%s' "$body" | grep -c "Just a moment")
+            cards=$(printf '%s' "$body" | grep -c 'class="match"')
+            echo "PROFILE $p exit=$status bytes=$bytes challenge=$challenge cards=$cards"
+          done

@@ -1,6 +1,6 @@
 import { chromium } from 'playwright-core';
 import type { Browser, BrowserContext, Page } from 'playwright-core';
-import { curlFetch, resolveCurlBinary } from './curl.ts';
+import { curlFetch, resolveCurlBinary, DEFAULT_PROFILES } from './curl.ts';
 
 export const BASE_URL = 'https://www.hltv.org';
 
@@ -77,7 +77,10 @@ export class HltvHttp {
   constructor(options: HttpClientOptions = {}) {
     this.opts = {
       mode: options.mode ?? 'auto',
-      impersonate: options.impersonate ?? 'chrome131',
+      // Try the whole profile list by default: which fingerprint Cloudflare
+      // accepts depends on the network the request comes from (a residential
+      // IP likes chrome131, a GitHub runner may not).
+      impersonate: options.impersonate ?? DEFAULT_PROFILES,
       headless: options.headless ?? true,
       allowHeadfulFallback: options.allowHeadfulFallback ?? true,
       timeoutMs: options.timeoutMs ?? 30_000,
