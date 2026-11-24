@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { HltvClient } from './client.ts';
+import { FeedClient } from './client.ts';
 import { countryView, enrichMatch, loadDirectory, searchCountries, teamKey } from './directory.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -13,9 +13,9 @@ const HOST = '127.0.0.1';
 const CACHE_TTL_MS = 60_000;
 
 // Default `auto` transport: curl-impersonate when installed (no browser at all),
-// otherwise real Chrome. Override with HLTV_MODE=curl|browser|fetch.
-const requestedMode = process.env.HLTV_MODE;
-const client = new HltvClient(
+// otherwise real Chrome. Override with TRANSPORT_MODE=curl|browser|fetch.
+const requestedMode = process.env.TRANSPORT_MODE;
+const client = new FeedClient(
   requestedMode === 'curl' || requestedMode === 'browser' || requestedMode === 'fetch'
     ? { mode: requestedMode }
     : {},
@@ -154,7 +154,7 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`cs2api running at http://${HOST}:${PORT} (transport: ${client.http.transport})`);
+  console.log(`api running at http://${HOST}:${PORT} (transport: ${client.http.transport})`);
 });
 
 const shutdown = () => {

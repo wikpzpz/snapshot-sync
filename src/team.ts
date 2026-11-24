@@ -15,7 +15,7 @@ import type {
 const TEAM_HREF = /^\/team\/(\d+)\//;
 
 /**
- * Country/flag/logo from the head of https://www.hltv.org/team/{id}/{slug}.
+ * Country/flag/logo from the head of https://www.the source site/team/{id}/{slug}.
  *
  * Only the first ~100 KB matter, so callers can pass `maxBytes` and skip the
  * other 5 MB of match history.
@@ -35,7 +35,7 @@ export function parseTeamProfileHead(html: string): {
 }
 
 /**
- * Every ranked team: https://www.hltv.org/ranking/teams lists ~240 in one page.
+ * Every ranked team: https://www.the source site/ranking/teams lists ~240 in one page.
  *
  * The block also shows the five starters with their flags, which is the only
  * cheap source of a team's *core* nationality (its org region is a separate,
@@ -77,7 +77,7 @@ const MATCH_HREF = /^\/matches\/(\d+)\//;
 const EVENT_HREF = /^\/events\/(\d+)\//;
 
 /**
- * Team results from https://www.hltv.org/search?query=<q>
+ * Team results from https://www.the source site/search?query=<q>
  *
  * Search hits are plain anchors carrying the result type:
  * `<a href="/team/6667/faze" data-result-type="TEAM" data-result-id="6667">FaZe</a>`
@@ -114,7 +114,7 @@ function sideRef(row: Cheerio<AnyNode>, which: 'team-1' | 'team-2'): TeamRef | n
 }
 
 /**
- * https://www.hltv.org/team/{id}/{slug}
+ * https://www.the source site/team/{id}/{slug}
  *
  * The page contains two `table.match-table` blocks — "Upcoming matches" (rows
  * carry a `.matchpage-button`) and "Recent results" (no button) — plus two

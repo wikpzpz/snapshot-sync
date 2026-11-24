@@ -1,12 +1,12 @@
 /**
- * Serve cs2api on your own domain (e.g. secs.se/api/...).
+ * Serve the API on your own domain (e.g. secs.se/api/...).
  *
  * The API itself runs on Freebuff Sites; this Worker only forwards requests, so
  * there is no database, no key and no scraping here.
  *
  * Cloudflare setup (one minute):
  *   1. Dashboard → Workers & Pages → Create → Worker → give it a name
- *      (e.g. `cs2api-proxy`) → Edit code → paste this whole file → Deploy.
+ *      (e.g. `the API-proxy`) → Edit code → paste this whole file → Deploy.
  *   2. That Worker → Settings → Triggers → Add route:
  *        Route:  secs.se/api/*      (pick your zone)
  *      Save. Requests to https://secs.se/api/... now hit this Worker.

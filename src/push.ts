@@ -1,17 +1,17 @@
 /**
  * Scrape locally (curl-impersonate works here) and push the parsed JSON to the
- * hosted cs2api on Freebuff Sites, which stores it in D1 and serves it.
+ * hosted the API on Freebuff Sites, which stores it in D1 and serves it.
  *
  *   npm run push                one push
  *   npm run push:watch          every 5 minutes
  *   node --experimental-strip-types src/push.ts --watch 2
  *
  * Env:
- *   SITE_URL   default https://cs2api-461yz8-preview.freebuff.site
+ *   SITE_URL   default https://the API-461yz8-preview.freebuff.site
  *   PUSH_KEY   defaults to the contents of .secrets/push-key
  */
 import { readFile } from 'node:fs/promises';
-import { HltvClient } from './client.ts';
+import { FeedClient } from './client.ts';
 import { learnRankedTeams, loadDirectory, resolveDirectory } from './directory.ts';
 
 const SITE_URL = (process.env.SITE_URL ?? 'https://cs2api-461yz8-preview.freebuff.site').replace(/\/$/, '');
@@ -28,7 +28,7 @@ async function pushKey(): Promise<string> {
 async function runOnce(): Promise<void> {
   const started = Date.now();
   // ~1 request/second: match pages get Cloudflare-challenged when requested faster.
-  const client = new HltvClient({ delayMs: 900 });
+  const client = new FeedClient({ delayMs: 900 });
   try {
     console.log(`Scraping with transport: ${client.http.transport}`);
 

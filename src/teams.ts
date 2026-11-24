@@ -7,10 +7,10 @@
  * at ~74 KB, so this reads a 200 KB prefix per team (~60 MB in total) instead of
  * the full page. Entries already known are skipped, so re-running is cheap.
  */
-import { HltvClient } from './client.ts';
+import { FeedClient } from './client.ts';
 import { learnEventTeams, learnRankedTeams, loadDirectory } from './directory.ts';
 
-const client = new HltvClient({ delayMs: 250 });
+const client = new FeedClient({ delayMs: 250 });
 try {
   const started = Date.now();
   const { added, missing } = await learnRankedTeams(client, {

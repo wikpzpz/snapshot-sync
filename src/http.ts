@@ -4,9 +4,9 @@ import { curlFetch, resolveCurlBinary, DEFAULT_PROFILES } from './curl.ts';
 
 export const BASE_URL = 'https://www.hltv.org';
 
-/** `HLTV_IMPERSONATE=chrome116,chrome110` to pin the fallback order per network. */
+/** `IMPERSONATE=chrome116,chrome110` to pin the fallback order per network. */
 function envProfiles(): string[] | undefined {
-  const raw = process.env.HLTV_IMPERSONATE?.trim();
+  const raw = process.env.IMPERSONATE?.trim();
   if (!raw) return undefined;
   const list = raw
     .split(',')
@@ -60,9 +60,9 @@ export interface HttpClientOptions {
 }
 
 /**
- * Serialized HTTP layer for hltv.org.
+ * Serialized HTTP layer for the source site.
  *
- * hltv.org has no JSON API: every page is a Cloudflare-protected HTML document.
+ * the source site has no JSON API: every page is a Cloudflare-protected HTML document.
  * Measured behaviour that shaped this class:
  * - Plain node/curl requests get `403 Just a moment...` — Cloudflare scores the
  *   TLS/HTTP2 fingerprint, not just headers.
@@ -73,7 +73,7 @@ export interface HttpClientOptions {
  *   uses a fresh context per request, which measured clean, and auto-switches
  *   from headless to headful when blocked.
  */
-export class HltvHttp {
+export class FeedHttp {
   private readonly opts: Required<
     Omit<HttpClientOptions, 'cookie' | 'executablePath' | 'profileDir' | 'curlPath'>
   > &
@@ -91,7 +91,7 @@ export class HltvHttp {
       // Try the whole profile list by default: which fingerprint Cloudflare
       // accepts depends on the network the request comes from. Measured:
       // chrome131 works from a residential IP, chrome116 from GitHub's runners
-      // (where 131/124/120/101 are challenged). Override with HLTV_IMPERSONATE.
+      // (where 131/124/120/101 are challenged). Override with IMPERSONATE.
       impersonate: options.impersonate ?? envProfiles() ?? DEFAULT_PROFILES,
       headless: options.headless ?? true,
       allowHeadfulFallback: options.allowHeadfulFallback ?? true,
@@ -110,7 +110,7 @@ export class HltvHttp {
       requested === 'auto' ? (resolveCurlBinary(options.curlPath) ? 'curl' : 'browser') : requested;
   }
 
-  /** Resolve a path or absolute URL against hltv.org. */
+  /** Resolve a path or absolute URL against the source site. */
   static resolve(pathOrUrl: string): string {
     return /^https?:\/\//i.test(pathOrUrl)
       ? pathOrUrl
@@ -124,7 +124,7 @@ export class HltvHttp {
 
   /** Fetch HTML, serialized through a single queue. */
   getHtml(pathOrUrl: string, options: { maxBytes?: number } = {}): Promise<string> {
-    const url = HltvHttp.resolve(pathOrUrl);
+    const url = FeedHttp.resolve(pathOrUrl);
     const run = this.queue.then(() => this.perform(url, options.maxBytes));
     this.queue = run.catch(() => undefined);
     return run;
@@ -172,7 +172,7 @@ export class HltvHttp {
           'Use the curl transport, or supply a fresh cf_clearance cookie.',
       );
     }
-    if (!res.ok) throw new Error(`HLTV responded HTTP ${res.status} for ${url}`);
+    if (!res.ok) throw new Error(`Source responded HTTP ${res.status} for ${url}`);
     return body;
   }
 
@@ -263,7 +263,7 @@ export class HltvHttp {
       if (html && !CHALLENGE.test(html.slice(0, 4000))) return html;
       await sleep(600);
     }
-    console.warn(`[hltv] Cloudflare still challenging ${url}`);
+    console.warn(`[fetch] Cloudflare still challenging ${url}`);
     return null;
   }
 
@@ -290,7 +290,7 @@ export class HltvHttp {
       return await this.loadOnce(url);
     } catch (error) {
       if (!this.headless || !this.opts.allowHeadfulFallback) throw error;
-      console.warn('[hltv] headless was blocked, retrying with a visible Chrome window');
+      console.warn('[fetch] headless was blocked, retrying with a visible Chrome window');
       this.headless = false;
       await this.resetBrowser();
       return this.loadOnce(url);

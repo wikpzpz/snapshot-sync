@@ -10,7 +10,7 @@ const CHALLENGE = /Just a moment|cf-chl|challenge-platform|Enable JavaScript and
 /**
  * Impersonation profiles tried in order.
  *
- * Measured against hltv.org: `chrome131` gets `200` on every page, while
+ * Measured against the source site: `chrome131` gets `200` on every page, while
  * `chrome136` is answered with `403 Just a moment...`. Cloudflare scores the TLS
  * ClientHello + HTTP/2 fingerprint, so the profile matters more than the headers.
  */
@@ -27,8 +27,8 @@ const CANDIDATE_PATHS = [
 /** Locate a curl-impersonate binary, or null when none is installed. */
 export function resolveCurlBinary(explicit?: string): string | null {
   if (explicit) return existsSync(explicit) ? explicit : null;
-  if (process.env.HLTV_CURL_PATH && existsSync(process.env.HLTV_CURL_PATH)) {
-    return process.env.HLTV_CURL_PATH;
+  if (process.env.CURL_PATH && existsSync(process.env.CURL_PATH)) {
+    return process.env.CURL_PATH;
   }
   for (const candidate of CANDIDATE_PATHS) {
     if (existsSync(candidate)) return candidate;
@@ -94,7 +94,7 @@ function fetchLimited(
  * Fetch a page through curl-impersonate.
  *
  * This is a real HTTP request with Chrome's TLS/HTTP2 fingerprint — no browser
- * process, no window — which is what hltv.org's Cloudflare rule accepts.
+ * process, no window — which is what the source site's Cloudflare rule accepts.
  */
 export async function curlFetch(url: string, options: CurlFetchOptions): Promise<string> {
   const profiles = Array.isArray(options.impersonate)
@@ -131,10 +131,10 @@ export async function curlFetch(url: string, options: CurlFetchOptions): Promise
         lastBody = stdout;
       }
       if (lastBody.length > 0 && !CHALLENGE.test(lastBody.slice(0, 4000))) return lastBody;
-      console.warn(`[hltv] profile ${profile} was challenged for ${url}`);
+      console.warn(`[fetch] profile ${profile} was challenged for ${url}`);
     } catch (error) {
       lastError = error;
-      console.warn(`[hltv] profile ${profile} failed for ${url}: ${String(error).slice(0, 120)}`);
+      console.warn(`[fetch] profile ${profile} failed for ${url}: ${String(error).slice(0, 120)}`);
     }
   }
 

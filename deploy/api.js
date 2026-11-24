@@ -1,7 +1,7 @@
 /**
- * cs2api on Freebuff Sites (Cloudflare Workers) — snapshot mode.
+ * the API on Freebuff Sites (Cloudflare Workers) — snapshot mode.
  *
- * A Worker cannot run curl-impersonate, its own fetch() to hltv.org gets
+ * A Worker cannot run curl-impersonate, its own fetch() to the source site gets
  * `403 Just a moment...`, and every free keyless renderer (r.jina.ai, microlink)
  * rate-limits Cloudflare's shared egress IPs with `429`. So the hosted API does
  * not scrape at all: `npm run push` scrapes locally (where curl-impersonate works
@@ -72,7 +72,7 @@ const norm = (value) => String(value ?? '').toLowerCase().trim();
 /** Team names are matched loosely: "BC.Game" and "bcgame" are the same team. */
 const teamKey = (name) => norm(name).replace(/[^a-z0-9]/g, '');
 
-/** Roster core first, then the org/region label HLTV prints. */
+/** Roster core first, then the org/region label the source prints. */
 const homeCountry = (team) => (team ? team.core || team.country || null : null);
 
 /** name key -> team directory entry ({ name, country, flag }). */

@@ -37,11 +37,11 @@ const toNumber = (value: string | undefined | null): number | null => {
   return text == null ? null : toInt(text);
 };
 
-/** Absolute image URL for HLTV's protocol-relative/relative `src`s. */
+/** Absolute image URL for the source's protocol-relative/relative `src`s. */
 /**
  * Strip any origin from an href.
  *
- * Pages rendered by microlink come back with absolute URLs (`https://www.hltv.org/team/6667/faze`),
+ * Pages rendered by microlink come back with absolute URLs (`https://www.the source site/team/6667/faze`),
  * while the raw HTML uses relative ones. Normalising keeps every parser and
  * `a[href^="/…"]` selector working for both.
  */
@@ -95,7 +95,33 @@ function teamsFromCard($: Doc, card: Cheerio<AnyNode>): Array<TeamRef | null> {
   return [teams[0] ?? null, teams[1] ?? null];
 }
 
-/** Cards from https://www.hltv.org/matches */
+/**
+ * Live cards expose two numbers per side: the series score (maps won, in
+ * `.map-score` as "(1)") and the rounds of the map being played right now
+ * (`.current-map-score[data-livescore-current-map-score]`).
+ */
+function liveScore(
+  $: Doc,
+  card: Cheerio<AnyNode>,
+): { series: { team1: number; team2: number } | null; rounds: { team1: number; team2: number } | null } {
+  const cells = card.find('.match-team-livescore .match-team-score');
+  if (cells.length < 2) return { series: null, rounds: null };
+
+  const read = (index: number) => {
+    const cell = cells.eq(index);
+    const roundsNode = cell.find('.current-map-score').first();
+    const rounds = toNumber(roundsNode.attr('data-livescore-current-map-score')) ?? toNumber(roundsNode.text());
+    const maps = toNumber(cell.find('.map-score').first().text());
+    return { rounds, maps };
+  };
+
+  const left = read(0);
+  const right = read(1);
+  const pair = (a: number | null, b: number | null) => (a == null || b == null ? null : { team1: a, team2: b });
+  return { series: pair(left.maps, right.maps), rounds: pair(left.rounds, right.rounds) };
+}
+
+/** Cards from the matches page. */
 export function parseMatchCards(html: string): MatchCard[] {
   const $ = load(html);
   const cards: MatchCard[] = [];
@@ -165,6 +191,8 @@ export function parseMatchCards(html: string): MatchCard[] {
     const starsAttr = toInt(wrapper.attr('data-stars')) ?? 0;
     const stars = card.find('.match-rating i.fa-star:not(.faded)').length || starsAttr;
 
+    const liveScores = live ? liveScore($, card) : { series: null, rounds: null };
+
     cards.push({
       id,
       url: `https://www.hltv.org${href}`,
@@ -176,14 +204,15 @@ export function parseMatchCards(html: string): MatchCard[] {
       event,
       team1,
       team2,
-      score: null,
+      score: liveScores.series,
+      mapScore: liveScores.rounds,
     });
   });
 
   return cards;
 }
 
-/** Entries from https://www.hltv.org/results?offset=N */
+/** Entries from https://www.the source site/results?offset=N */
 export function parseResults(html: string): MatchResult[] {
   const $ = load(html);
   const results: MatchResult[] = [];
@@ -251,7 +280,7 @@ export function parseResults(html: string): MatchResult[] {
   return results;
 }
 
-/** Ongoing + upcoming events from https://www.hltv.org/events */
+/** Ongoing + upcoming events from https://www.the source site/events */
 export function parseEvents(html: string): { ongoing: EventSummary[]; upcoming: EventSummary[] } {
   const $ = load(html);
   const ongoing: EventSummary[] = [];
@@ -325,7 +354,7 @@ function headerTeam($: Doc, which: 1 | 2, hasTeamNames: boolean): (TeamRef & { s
   return { id: null, name: name ?? `team${which}`, logo, score: toNumber(scoreNode.text()), won };
 }
 
-/** https://www.hltv.org/matches/{id}/{slug} */
+/** https://www.the source site/matches/{id}/{slug} */
 export function parseMatchDetail(html: string, id: number, url: string): MatchDetail {
   const $ = load(html);
 
@@ -388,7 +417,7 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
   };
 }
 
-/** https://www.hltv.org/events/{id}/{slug} */
+/** https://www.the source site/events/{id}/{slug} */
 export function parseEventDetail(html: string, id: number, url: string): EventDetail {
   const $ = load(html);
   const header = $('.event-header-component, .event-page').first();

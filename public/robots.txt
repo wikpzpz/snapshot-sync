@@ -1,4 +1,4 @@
 User-agent: *
 Disallow: /
 
-# cs2api is a private tool; keep it out of search indexes.
+# the API is a private tool; keep it out of search indexes.

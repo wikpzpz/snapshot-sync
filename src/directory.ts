@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { load } from 'cheerio/slim';
-import type { HltvClient } from './client.ts';
+import type { FeedClient } from './client.ts';
 import { clean, cleanName, imgUrl, pathOf, toInt } from './parse.ts';
 import { coreCountry, parseRanking, parseTeamProfileHead } from './team.ts';
 import type { MatchCard, MatchResult, TeamDirectoryEntry, TeamEvent, TeamRef } from './types.ts';
@@ -46,7 +46,7 @@ function flagUrl(src: string | undefined): string | null {
 }
 
 /**
- * Both teams of https://www.hltv.org/matches/{id}/{slug}, with their region.
+ * Both teams of https://www.the source site/matches/{id}/{slug}, with their region.
  *
  * The `teamsBox` carries a big region flag per team:
  * `<div class="team"><img alt="Europe" src="/img/static/flags/300x200/EU.png">…<div class="teamName">FaZe</div></div>`
@@ -81,11 +81,11 @@ export function parseMatchTeams(html: string): TeamDirectoryEntry[] {
 /**
  * A match page's teams, retried with backoff.
  *
- * hltv.org answers fast bursts of match pages with a Cloudflare challenge again;
+ * the source site answers fast bursts of match pages with a Cloudflare challenge again;
  * ~1 request/second keeps it at roughly 95% success, and the retries absorb the
  * rest (a miss is not fatal — the team is picked up on a later push).
  */
-async function teamsOf(client: HltvClient, id: number): Promise<TeamDirectoryEntry[]> {
+async function teamsOf(client: FeedClient, id: number): Promise<TeamDirectoryEntry[]> {
   let lastError: unknown = null;
   for (const [attempt, backoff] of [0, 1_500, 4_000].entries()) {
     if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, backoff));
@@ -122,7 +122,7 @@ export interface DirectorySource {
 }
 
 export async function resolveDirectory(
-  client: HltvClient,
+  client: FeedClient,
   matches: DirectorySource[],
   options: { limit?: number; onProgress?: (done: number, total: number) => void } = {},
 ): Promise<DirectoryResult> {
@@ -196,7 +196,7 @@ export function enrichMatch<T extends { team1: TeamRef | null; team2: TeamRef | 
  * Teams already known are skipped, which makes later runs nearly free.
  */
 export async function learnRankedTeams(
-  client: HltvClient,
+  client: FeedClient,
   options: { limit?: number; onProgress?: (done: number, total: number) => void } = {},
 ): Promise<{ added: number; missing: number }> {
   const ranking = parseRanking(await client.http.getHtml('/ranking/teams'));
@@ -256,10 +256,10 @@ export async function learnRankedTeams(
  *
  * Ranking covers ~240 teams and matches/results cover the rest of the active
  * ones, but event pages list every invited team with its id — the widest
- * source HLTV exposes without login (its per-country stats pages are blocked).
+ * source the source exposes without login (its per-country stats pages are blocked).
  */
 export async function learnEventTeams(
-  client: HltvClient,
+  client: FeedClient,
   options: { limit?: number; onProgress?: (done: number, total: number) => void } = {},
 ): Promise<{ added: number; known: number }> {
   const { ongoing, upcoming } = await client.getEvents();

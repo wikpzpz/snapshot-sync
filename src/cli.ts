@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { HltvClient } from './client.ts';
+import { FeedClient } from './client.ts';
 
-const USAGE = `hltv-api — typed client for hltv.org
+const USAGE = `match feed — typed client for the source site
 
 Usage:
   node --experimental-strip-types src/cli.ts matches [--event ID]... [--limit N]
@@ -16,7 +16,7 @@ Flags:
   --headful         Show the Chrome window instead of running headless (browser mode)
   --mode MODE       auto (default) | curl | browser | fetch
   --cookie VALUE    Cookie header for --mode fetch
-  --slug SLUG       Slug segment for event/match URLs (optional, HLTV ignores it)
+  --slug SLUG       Slug segment for event/match URLs (optional, the source ignores it)
 `;
 
 interface Args {
@@ -66,7 +66,7 @@ const asNumber = (value: string | string[] | boolean | undefined): number | unde
 
 function printHuman(command: string, data: unknown): void {
   if (command === 'matches') {
-    for (const match of data as Awaited<ReturnType<HltvClient['getMatches']>>) {
+    for (const match of data as Awaited<ReturnType<FeedClient['getMatches']>>) {
       const when = match.startsAt ? new Date(match.startsAt).toISOString().slice(0, 16).replace('T', ' ') : 'LIVE';
       console.log(
         `${when}  ${(match.team1?.name ?? 'TBD').padEnd(18)} vs ${(match.team2?.name ?? 'TBD').padEnd(18)} ` +
@@ -76,7 +76,7 @@ function printHuman(command: string, data: unknown): void {
     return;
   }
   if (command === 'results') {
-    for (const result of data as Awaited<ReturnType<HltvClient['getResults']>>) {
+    for (const result of data as Awaited<ReturnType<FeedClient['getResults']>>) {
       const score = `${result.score?.team1 ?? '?'}-${result.score?.team2 ?? '?'}`;
       const when =
         result.startsAt != null
@@ -103,7 +103,7 @@ async function main(): Promise<number> {
   const mode = (['auto', 'curl', 'browser', 'fetch'] as const).includes(requested as never)
     ? (requested as 'auto' | 'curl' | 'browser' | 'fetch')
     : 'auto';
-  const client = new HltvClient({
+  const client = new FeedClient({
     mode,
     cookie: typeof flags.cookie === 'string' ? flags.cookie : undefined,
     headless: flags.headful !== true,
@@ -149,7 +149,7 @@ async function main(): Promise<number> {
 
     if (json || flags.json === true) console.log(JSON.stringify(data, null, 2));
     else if (command === 'events') {
-      const events = data as Awaited<ReturnType<HltvClient['getEvents']>>;
+      const events = data as Awaited<ReturnType<FeedClient['getEvents']>>;
       console.log(`Ongoing (${events.ongoing.length}):`);
       for (const event of events.ongoing) console.log(`  #${event.id} ${event.name} — ${event.location ?? ''}`);
       console.log(`Upcoming (${events.upcoming.length}):`);

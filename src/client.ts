@@ -1,4 +1,4 @@
-import { HltvHttp } from './http.ts';
+import { FeedHttp } from './http.ts';
 import type { HttpClientOptions } from './http.ts';
 import { parseEventDetail, parseEvents, parseMatchCards, parseMatchDetail, parseResults } from './parse.ts';
 import { parseTeamPage, parseTeamSearch } from './team.ts';
@@ -15,11 +15,11 @@ import type {
 } from './types.ts';
 
 export interface ResultsOptions {
-  /** Server-side pagination; HLTV pages results in steps of 100. */
+  /** Server-side pagination; the source pages results in steps of 100. */
   offset?: number;
   /** Only results of one event (/results?event={id}). */
   eventId?: number;
-  /** Only matches on one map or favoured/unfavoured filters HLTV supports. */
+  /** Only matches on one map or favoured/unfavoured filters the source supports. */
   extraQuery?: Record<string, string>;
 }
 
@@ -29,21 +29,21 @@ export interface MatchesOptions {
 }
 
 /**
- * Typed client over HLTV's public web endpoints.
+ * Typed client over the source's public web endpoints.
  *
  * Every method maps onto one HTML document; the parsers in `parse.ts` turn the
  * markup into the interfaces in `types.ts`. See docs/ENDPOINTS.md for the
  * reverse-engineering notes (Cloudflare, auth-only /api/, scorebot, etc.).
  */
-export class HltvClient {
-  readonly http: HltvHttp;
+export class FeedClient {
+  readonly http: FeedHttp;
 
   constructor(options: HttpClientOptions = {}) {
-    this.http = new HltvHttp(options);
+    this.http = new FeedHttp(options);
   }
 
   /**
-   * Live + upcoming matches: https://www.hltv.org/matches
+   * Live + upcoming matches: https://www.the source site/matches
    *
    * `?event=` is ignored server-side (the page ships all 200+ cards and filters
    * with JS), so `eventIds` is applied to the parsed cards instead.
@@ -56,7 +56,7 @@ export class HltvClient {
     return cards.filter((card) => card.event?.id != null && wanted.has(card.event.id));
   }
 
-  /** Finished matches: https://www.hltv.org/results?offset=N */
+  /** Finished matches: https://www.the source site/results?offset=N */
   async getResults(options: ResultsOptions = {}): Promise<MatchResult[]> {
     const params = new URLSearchParams();
     params.set('offset', String(options.offset ?? 0));
@@ -66,40 +66,40 @@ export class HltvClient {
     return parseResults(html);
   }
 
-  /** Ongoing and upcoming events: https://www.hltv.org/events */
+  /** Ongoing and upcoming events: https://www.the source site/events */
   async getEvents(): Promise<{ ongoing: EventSummary[]; upcoming: EventSummary[] }> {
     return parseEvents(await this.http.getHtml('/events'));
   }
 
-  /** https://www.hltv.org/events/{id}/{slug} */
+  /** https://www.the source site/events/{id}/{slug} */
   async getEvent(id: number, slug = 'x'): Promise<EventDetail> {
     const path = `/events/${id}/${slug}`;
-    return parseEventDetail(await this.http.getHtml(path), id, HltvHttp.resolve(path));
+    return parseEventDetail(await this.http.getHtml(path), id, FeedHttp.resolve(path));
   }
 
-  /** https://www.hltv.org/matches/{id}/{slug} */
+  /** https://www.the source site/matches/{id}/{slug} */
   async getMatch(id: number, slug = 'x'): Promise<MatchDetail> {
     const path = `/matches/${id}/${slug}`;
-    return parseMatchDetail(await this.http.getHtml(path), id, HltvHttp.resolve(path));
+    return parseMatchDetail(await this.http.getHtml(path), id, FeedHttp.resolve(path));
   }
 
   /**
    * The two teams of a match with their region/country.
-   * https://www.hltv.org/matches/{id}/{slug} — the only cheap source of team country.
+   * https://www.the source site/matches/{id}/{slug} — the only cheap source of team country.
    */
   async getMatchTeams(id: number, slug = 'x'): Promise<TeamDirectoryEntry[]> {
     return parseMatchTeams(await this.http.getHtml(`/matches/${id}/${slug}`));
   }
 
-  /** Team lookup: https://www.hltv.org/search?query=<q> */
+  /** Team lookup: https://www.the source site/search?query=<q> */
   async searchTeams(query: string): Promise<TeamSearchResult[]> {
     return parseTeamSearch(await this.http.getHtml(`/search?query=${encodeURIComponent(query)}`));
   }
 
-  /** https://www.hltv.org/team/{id}/{slug} — fixture table plus the events the team is attending. */
+  /** https://www.the source site/team/{id}/{slug} — fixture table plus the events the team is attending. */
   async getTeamUpcoming(id: number, slug = 'x'): Promise<TeamUpcoming> {
     const path = `/team/${id}/${slug}`;
-    return parseTeamPage(await this.http.getHtml(path), id, HltvHttp.resolve(path));
+    return parseTeamPage(await this.http.getHtml(path), id, FeedHttp.resolve(path));
   }
 
   async close(): Promise<void> {

@@ -24,7 +24,7 @@ concurrency:
 env:
   SITE_URL: https://cs2api-461yz8-preview.freebuff.site
   # Chrome 116's TLS fingerprint is the one the upstream accepts from runners.
-  HLTV_IMPERSONATE: chrome116
+  IMPERSONATE: chrome116
 
 jobs:
   push:

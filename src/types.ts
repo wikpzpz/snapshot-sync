@@ -1,4 +1,4 @@
-/** Reverse-engineered domain model for the HLTV.org public web endpoints. */
+/** Reverse-engineered domain model for the the source site public web endpoints. */
 
 export type MatchStatus = 'upcoming' | 'live' | 'finished';
 
@@ -18,7 +18,7 @@ export interface EventRef {
   logo: string | null;
 }
 
-/** A card from https://www.hltv.org/matches (live + upcoming). */
+/** A card from https://www.the source site/matches (live + upcoming). */
 export interface MatchCard {
   id: number;
   url: string;
@@ -33,13 +33,15 @@ export interface MatchCard {
   event: EventRef | null;
   team1: TeamRef | null;
   team2: TeamRef | null;
-  /** Live map score when the card exposes it. */
+  /** Series score (maps won) of a live card, e.g. `{ team1: 1, team2: 0 }`. */
   score: { team1: number; team2: number } | null;
+  /** Rounds of the map being played right now, e.g. `{ team1: 9, team2: 6 }`. */
+  mapScore?: { team1: number; team2: number } | null;
   /** Set by /api/country: which side(s) belong to the requested country. */
   countryTeam?: 'team1' | 'team2' | 'both' | null;
 }
 
-/** An entry from https://www.hltv.org/results (finished matches). */
+/** An entry from https://www.the source site/results (finished matches). */
 export interface MatchResult {
   id: number;
   url: string;
@@ -51,7 +53,7 @@ export interface MatchResult {
   team1: TeamRef & { won: boolean };
   team2: TeamRef & { won: boolean };
   event: EventRef | null;
-  /** Map the result was played on, when HLTV shows one ("mrg", "inf", ...). */
+  /** Map the result was played on, when the source shows one ("mrg", "inf", ...). */
   map: string | null;
   starred: boolean;
 }
@@ -64,7 +66,7 @@ export interface MapScore {
   winner: 1 | 2 | null;
 }
 
-/** https://www.hltv.org/matches/{id}/{slug} */
+/** https://www.the source site/matches/{id}/{slug} */
 export interface MatchDetail {
   id: number;
   url: string;
@@ -89,7 +91,7 @@ export interface EventSummary {
   ongoing: boolean;
 }
 
-/** https://www.hltv.org/events/{id}/{slug} */
+/** https://www.the source site/events/{id}/{slug} */
 export interface EventDetail {
   id: number;
   url: string;
@@ -104,13 +106,13 @@ export interface EventDetail {
 
 export interface MatchesOptions {
   /**
-   * Only keep matches of these events. HLTV's own `?event=` filter runs in the
+   * Only keep matches of these events. the source's own `?event=` filter runs in the
    * browser, so the page always returns every match and filtering happens here.
    */
   eventIds?: number[];
 }
 
-/** A team returned by https://www.hltv.org/search?query=<q> */
+/** A team returned by https://www.the source site/search?query=<q> */
 export interface TeamSearchResult {
   id: number;
   name: string;
@@ -130,7 +132,7 @@ export interface TeamEvent {
 
 /** A team plus the country/region shown on its profile page. */
 export interface TeamProfile extends TeamSearchResult {
-  /** e.g. "Europe", "Brazil", "France" — HLTV labels teams by region or country. */
+  /** e.g. "Europe", "Brazil", "France" — the source labels teams by region or country. */
   country: string | null;
   /** Flag image from `/img/static/flags/30x20/XX.gif`. */
   flag: string | null;
@@ -146,13 +148,13 @@ export interface TeamDirectoryEntry {
   country: string | null;
   /** 30x20 flag gif, derived from the 300x200 banner. */
   flag: string | null;
-  /** HLTV team id, when the entry came from a match page or the ranking. */
+  /** the source team id, when the entry came from a match page or the ranking. */
   id?: number | null;
   /** Team logo, when known. */
   logo?: string | null;
   /**
    * Majority nationality of the starting five — the "core". This differs from
-   * `country` (the org/region HLTV prints): fnatic's region is "Ukraine" while
+   * `country` (the org/region the source prints): fnatic's region is "Ukraine" while
    * its core can be Swedish. Country views prefer this when present.
    */
   core?: string | null;
@@ -160,7 +162,7 @@ export interface TeamDirectoryEntry {
   coreSize?: number | null;
 }
 
-/** https://www.hltv.org/team/{id}/{slug} */
+/** https://www.the source site/team/{id}/{slug} */
 export interface TeamUpcoming {
   team: TeamProfile;
   upcoming: MatchCard[];

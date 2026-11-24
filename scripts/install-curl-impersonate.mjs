@@ -2,7 +2,7 @@
 /**
  * Download curl-impersonate into .tools/.
  *
- * hltv.org's Cloudflare rule accepts Chrome's TLS fingerprint but rejects node's
+ * the source site's Cloudflare rule accepts Chrome's TLS fingerprint but rejects node's
  * and older/newer profiles, so the client talks HTTP through this binary
  * (profile chrome131 by default) instead of driving a browser.
  */
