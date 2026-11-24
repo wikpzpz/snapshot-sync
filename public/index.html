@@ -176,15 +176,9 @@
         return `<b>${time}</b>${day}`;
       };
 
-      /** Live: "9 : 6" rounds on the current map, plus the series in maps. */
-      const liveScoreText = (match) => {
-        const rounds = match.mapScore ? `${match.mapScore.team1} : ${match.mapScore.team2}` : '';
-        const series = match.score ? `${match.score.team1}–${match.score.team2}` : '';
-        if (rounds && series) return `<b>${rounds}</b> <small>(maps ${series})</small>`;
-        if (rounds) return `<b>${rounds}</b>`;
-        if (series) return `<b>maps ${series}</b>`;
-        return '';
-      };
+      /** Live: the rounds of the map being played right now, e.g. "9 : 6". */
+      const liveScoreText = (match) =>
+        match.mapScore ? `<b>${match.mapScore.team1} : ${match.mapScore.team2}</b>` : '';
 
       async function api(path) {
         const res = await fetch(path);

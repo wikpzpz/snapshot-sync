@@ -33,10 +33,8 @@ export interface MatchCard {
   event: EventRef | null;
   team1: TeamRef | null;
   team2: TeamRef | null;
-  /** Series score (maps won) of a live card, e.g. `{ team1: 1, team2: 0 }`. */
-  score: { team1: number; team2: number } | null;
   /** Rounds of the map being played right now, e.g. `{ team1: 9, team2: 6 }`. */
-  mapScore?: { team1: number; team2: number } | null;
+  mapScore: { team1: number; team2: number } | null;
   /** Set by /api/country: which side(s) belong to the requested country. */
   countryTeam?: 'team1' | 'team2' | 'both' | null;
 }

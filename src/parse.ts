@@ -96,29 +96,22 @@ function teamsFromCard($: Doc, card: Cheerio<AnyNode>): Array<TeamRef | null> {
 }
 
 /**
- * Live cards expose two numbers per side: the series score (maps won, in
- * `.map-score` as "(1)") and the rounds of the map being played right now
- * (`.current-map-score[data-livescore-current-map-score]`).
+ * Live cards expose the rounds of the map being played right now in
+ * `.current-map-score[data-livescore-current-map-score]`. The maps-won series
+ * (`.map-score`, printed as "(1)") is deliberately ignored.
  */
-function liveScore(
-  $: Doc,
-  card: Cheerio<AnyNode>,
-): { series: { team1: number; team2: number } | null; rounds: { team1: number; team2: number } | null } {
+function liveScore($: Doc, card: Cheerio<AnyNode>): { team1: number; team2: number } | null {
   const cells = card.find('.match-team-livescore .match-team-score');
-  if (cells.length < 2) return { series: null, rounds: null };
+  if (cells.length < 2) return null;
 
-  const read = (index: number) => {
-    const cell = cells.eq(index);
-    const roundsNode = cell.find('.current-map-score').first();
-    const rounds = toNumber(roundsNode.attr('data-livescore-current-map-score')) ?? toNumber(roundsNode.text());
-    const maps = toNumber(cell.find('.map-score').first().text());
-    return { rounds, maps };
+  const roundsOf = (index: number) => {
+    const node = cells.eq(index).find('.current-map-score').first();
+    return toNumber(node.attr('data-livescore-current-map-score')) ?? toNumber(node.text());
   };
 
-  const left = read(0);
-  const right = read(1);
-  const pair = (a: number | null, b: number | null) => (a == null || b == null ? null : { team1: a, team2: b });
-  return { series: pair(left.maps, right.maps), rounds: pair(left.rounds, right.rounds) };
+  const left = roundsOf(0);
+  const right = roundsOf(1);
+  return left == null || right == null ? null : { team1: left, team2: right };
 }
 
 /** Cards from the matches page. */
@@ -191,7 +184,7 @@ export function parseMatchCards(html: string): MatchCard[] {
     const starsAttr = toInt(wrapper.attr('data-stars')) ?? 0;
     const stars = card.find('.match-rating i.fa-star:not(.faded)').length || starsAttr;
 
-    const liveScores = live ? liveScore($, card) : { series: null, rounds: null };
+    const liveMapScore = live ? liveScore($, card) : null;
 
     cards.push({
       id,
@@ -204,8 +197,7 @@ export function parseMatchCards(html: string): MatchCard[] {
       event,
       team1,
       team2,
-      score: liveScores.series,
-      mapScore: liveScores.rounds,
+      mapScore: liveMapScore,
     });
   });
 

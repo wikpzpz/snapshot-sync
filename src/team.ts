@@ -189,7 +189,7 @@ export function parseTeamPage(html: string, id: number, url: string): TeamUpcomi
         event,
         team1: sideRef(row, 'team-1'),
         team2: sideRef(row, 'team-2'),
-        score: score1 != null && score2 != null ? { team1: score1, team2: score2 } : null,
+        mapScore: score1 != null && score2 != null ? { team1: score1, team2: score2 } : null,
       });
     });
   });
