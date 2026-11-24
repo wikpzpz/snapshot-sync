@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>cs2api</title>
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
+    <meta name="googlebot" content="noindex, nofollow" />
+    <style>
+      :root {
+        --bg: #14181b;
+        --panel: #1c2126;
+        --panel-2: #232a30;
+        --line: #2e373f;
+        --text: #e8edf1;
+        --muted: #93a2ae;
+        --accent: #f0a92b;
+        --live: #e8564a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(1200px 600px at 15% -10%, #212a31 0%, var(--bg) 55%);
+        color: var(--text);
+        font: 15px/1.5 "Segoe UI", Roboto, system-ui, sans-serif;
+      }
+      .wrap { max-width: 1000px; margin: 0 auto; padding: 40px 22px 70px; }
+      header h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.02em; }
+      header p { margin: 0 0 26px; color: var(--muted); font-size: 14px; }
+      header code { color: var(--accent); }
+
+      form { display: flex; gap: 10px; }
+      input[type="search"] {
+        flex: 1; padding: 13px 16px; border-radius: 10px; border: 1px solid var(--line);
+        background: var(--panel); color: var(--text); font-size: 15px; outline: none;
+      }
+      input[type="search"]:focus { border-color: var(--accent); }
+      button {
+        padding: 13px 20px; border-radius: 10px; border: 1px solid transparent;
+        background: var(--accent); color: #201703; font-weight: 650; font-size: 15px; cursor: pointer;
+      }
+      button:hover { filter: brightness(1.07); }
+      button:disabled { opacity: .6; cursor: progress; }
+
+      .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+      .suggestions button {
+        background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+        font-weight: 500; padding: 9px 14px; display: inline-flex; align-items: center; gap: 8px;
+      }
+      .suggestions img { width: 18px; height: 18px; object-fit: contain; }
+      .suggestions button.country { border-color: rgba(240, 169, 43, .5); }
+      .suggestions button.country img { width: 20px; height: 14px; border-radius: 2px; object-fit: cover; }
+
+      .status { margin-top: 22px; color: var(--muted); font-size: 14px; min-height: 20px; }
+      .status.error { color: #ffb3aa; font-weight: 600; background: rgba(232, 86, 74, .12); border: 1px solid rgba(232, 86, 74, .4); padding: 8px 12px; border-radius: 8px; }
+
+      .team-head { display: flex; align-items: center; gap: 16px; margin: 26px 0 20px; }
+      .team-head img { width: 54px; height: 54px; object-fit: contain; }
+      .team-head h2 { margin: 0; font-size: 22px; }
+      .team-head a { color: var(--muted); font-size: 13px; }
+      .where { margin: 2px 0 4px; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+      .where img { width: 16px; height: 12px; object-fit: cover; border-radius: 2px; }
+      .counts { margin-left: auto; color: var(--muted); font-size: 13px; text-align: right; }
+
+      .grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 18px; align-items: start; }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+      section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+      section h3 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+
+      .match { display: grid; grid-template-columns: 74px 1fr auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
+      .match:first-of-type { border-top: 0; }
+      .match .when { font-size: 13px; color: var(--muted); white-space: nowrap; }
+      .match .when b { display: block; color: var(--text); font-weight: 600; }
+      .match .teams { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+      .match .teams img { width: 18px; height: 18px; object-fit: contain; }
+      .match .teams .vs { color: var(--muted); font-weight: 400; font-size: 12px; }
+      .match .meta { text-align: right; font-size: 12px; color: var(--muted); }
+      .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; background: var(--live); color: #fff; }
+      .match a { color: inherit; text-decoration: none; }
+      .match a:hover .teams { color: var(--accent); }
+
+      .event { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+      .event:first-of-type { border-top: 0; }
+      .event img { width: 26px; height: 26px; object-fit: contain; }
+      .event .name { font-weight: 550; font-size: 14px; }
+      .event .n { margin-left: auto; color: var(--muted); font-size: 12px; }
+      .event a { color: inherit; text-decoration: none; display: flex; gap: 10px; align-items: center; flex: 1; }
+      .event a:hover .name { color: var(--accent); }
+
+      .empty { color: var(--muted); font-size: 14px; }
+
+      details { margin-top: 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+      summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+      pre { overflow: auto; max-height: 380px; font-size: 12px; color: #b7c4ce; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>cs2api</h1>
+        <p>Search a team to see what <code>HltvClient</code> scrapes: scheduled and live matches, plus the events they belong to.</p>
+      </header>
+
+      <form id="search-form">
+        <input id="q" type="search" placeholder="Team or country, e.g. FaZe, NAVI, Sweden" autocomplete="off" autofocus />
+        <button id="go" type="submit">Search</button>
+      </form>
+
+      <div class="suggestions" id="suggestions"></div>
+      <div class="status" id="status"></div>
+
+      <div id="team-panel" hidden>
+        <div class="team-head">
+          <img id="team-logo" alt="" />
+          <div>
+            <h2 id="team-name"></h2>
+            <p class="where" id="team-where"></p>
+            <a id="team-link" href="#" target="_blank" rel="noreferrer">on hltv.org ↗</a>
+          </div>
+          <div class="counts" id="team-counts"></div>
+        </div>
+
+        <div class="grid">
+          <section>
+            <h3>Upcoming &amp; live matches</h3>
+            <div id="matches"></div>
+          </section>
+          <section>
+            <h3>Events</h3>
+            <div id="events"></div>
+          </section>
+        </div>
+
+        <details>
+          <summary>Raw JSON from the API</summary>
+          <pre id="raw"></pre>
+        </details>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const statusEl = $('status');
+      let lastPayload = null;
+
+      const setStatus = (text, isError = false) => {
+        statusEl.textContent = text;
+        statusEl.className = 'status' + (isError ? ' error' : '');
+      };
+
+      const fmtRange = (from, to) => {
+        const d = (ms) => new Date(ms).toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+        if (from == null) return '';
+        return to == null ? d(from) : `${d(from)} – ${d(to)}`;
+      };
+
+      const fmtWhen = (ms) => {
+        if (ms == null) return '<b>LIVE</b>';
+        const d = new Date(ms);
+        const day = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+        const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        return `<b>${time}</b>${day}`;
+      };
+
+      async function api(path) {
+        const res = await fetch(path);
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+        return body;
+      }
+
+      function renderTeams(teams, countries = []) {
+        const box = $('suggestions');
+        box.innerHTML = '';
+        if (!teams.length && !countries.length) {
+          setStatus('Nothing matched that name. Try a team or a country such as Sweden.', true);
+          return;
+        }
+
+        for (const country of countries) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'country';
+          btn.innerHTML = `${country.flag ? `<img src="${country.flag}" alt="" />` : ''}<span></span>`;
+          btn.querySelector('span').textContent = `${country.name} · ${country.teams} teams`;
+          btn.addEventListener('click', () => loadCountry(country.name));
+          box.appendChild(btn);
+        }
+
+        for (const team of teams) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.innerHTML = `${team.logo ? `<img src="${team.logo}" alt="" />` : ''}<span></span>`;
+          btn.querySelector('span').textContent = team.name;
+          btn.addEventListener('click', () => loadTeam(team.id, team.name));
+          box.appendChild(btn);
+        }
+      }
+
+      async function loadCountry(name) {
+        setStatus(`Loading ${name}…`);
+        $('go').disabled = true;
+        try {
+          renderTeam(await api(`/api/country/${encodeURIComponent(name)}`));
+          setStatus('');
+        } catch (error) {
+          setStatus(error.message, true);
+        } finally {
+          $('go').disabled = false;
+        }
+      }
+
+      function renderTeam(data) {
+        const { team, upcoming, events } = data;
+        $('team-panel').hidden = false;
+        $('team-logo').src = team.logo ?? '';
+        $('team-logo').hidden = !team.logo;
+        $('team-name').textContent = team.name;
+        $('team-link').hidden = !team.url;
+        if (team.url) $('team-link').href = team.url;
+
+        const where = $('team-where');
+        where.innerHTML = '';
+        if (team.flag) {
+          const flag = document.createElement('img');
+          flag.src = team.flag;
+          flag.alt = '';
+          where.appendChild(flag);
+        }
+        where.appendChild(document.createTextNode(team.country ?? ''));
+        const snapshot = data.updatedAt ? ` · snapshot ${new Date(data.updatedAt).toLocaleString()}` : '';
+        $('team-counts').textContent = `${upcoming.length} match${upcoming.length === 1 ? '' : 'es'} · ${events.length} event${events.length === 1 ? '' : 's'}${snapshot}`;
+
+        const matches = $('matches');
+        matches.innerHTML = upcoming.length ? '' : '<p class="empty">No scheduled matches in the team\'s fixture table.</p>';
+        for (const match of upcoming) {
+          const row = document.createElement('div');
+          row.className = 'match';
+          const t1 = match.team1;
+          const t2 = match.team2;
+          row.innerHTML = `
+            <div class="when">${fmtWhen(match.startsAt)}</div>
+            <div>
+              <a href="${match.url}" target="_blank" rel="noreferrer">
+                <div class="teams">
+                  ${t1?.logo ? `<img src="${t1.logo}" alt="" />` : ''}<span class="n1"></span>
+                  <span class="vs">vs</span>
+                  ${t2?.logo ? `<img src="${t2.logo}" alt="" />` : ''}<span class="n2"></span>
+                </div>
+              </a>
+            </div>
+            <div class="meta">
+              ${match.status === 'live' ? '<span class="badge">LIVE</span><br />' : ''}
+              <span class="fmt"></span>
+            </div>`;
+          row.querySelector('.n1').textContent = t1?.name ?? 'TBD';
+          row.querySelector('.n2').textContent = t2?.name ?? 'TBD';
+          row.querySelector('.fmt').textContent = match.format ?? '';
+          matches.appendChild(row);
+        }
+
+        const evBox = $('events');
+        evBox.innerHTML = events.length ? '' : '<p class="empty">No upcoming events on the team page.</p>';
+        for (const event of events) {
+          const el = document.createElement('div');
+          el.className = 'event';
+          el.innerHTML = `
+            <a ${event.url ? `href="${event.url}" target="_blank" rel="noreferrer"` : ''}>
+              ${event.logo ? `<img src="${event.logo}" alt="" />` : ''}
+              <span class="name"></span>
+            </a>
+            <span class="n"></span>`;
+          el.querySelector('.name').textContent = event.name;
+          el.querySelector('.n').textContent = fmtRange(event.startsAt, event.endsAt);
+          evBox.appendChild(el);
+        }
+
+        $('raw').textContent = JSON.stringify(data, null, 2);
+      }
+
+      async function loadTeam(id, name) {
+        setStatus(`Loading ${name}…`);
+        $('go').disabled = true;
+        try {
+          // Local API looks teams up by id; the hosted snapshot API by name.
+        const data = await api(`/api/team/${id}?name=${encodeURIComponent(name)}`);
+          lastPayload = data;
+          renderTeam(data);
+          setStatus('');
+        } catch (error) {
+          setStatus(error.message, true);
+        } finally {
+          $('go').disabled = false;
+        }
+      }
+
+      $('search-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const q = $('q').value.trim();
+        if (q.length < 2) {
+          setStatus('Type at least 2 characters.', true);
+          return;
+        }
+        setStatus(`Searching for “${q}”…`);
+        $('go').disabled = true;
+        try {
+          const data = await api(`/api/search?q=${encodeURIComponent(q)}`);
+          renderTeams(data.teams ?? [], data.countries ?? []);
+          setStatus('');
+        } catch (error) {
+          setStatus(error.message, true);
+        } finally {
+          $('go').disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

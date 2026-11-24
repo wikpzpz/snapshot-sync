@@ -1,0 +1,30 @@
+{
+  "name": "cs2api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed client for HLTV.org matches, results and events, reverse engineered from the site's public web endpoints.",
+  "engines": {
+    "node": ">=22.16"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/server.ts",
+    "setup:curl": "node scripts/install-curl-impersonate.mjs",
+    "push": "node --experimental-strip-types src/push.ts",
+    "push:watch": "node --experimental-strip-types src/push.ts --watch 5",
+    "build:worker": "esbuild deploy/api.js --bundle --format=esm --platform=browser --target=es2022 --outfile=deploy/worker.js --conditions=browser --main-fields=browser,module,main",
+    "matches": "node --experimental-strip-types src/cli.ts matches",
+    "results": "node --experimental-strip-types src/cli.ts results",
+    "events": "node --experimental-strip-types src/cli.ts events",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "playwright-core": "^1.65.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

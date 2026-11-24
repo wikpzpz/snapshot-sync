@@ -1,0 +1,248 @@
+// deploy/api.js
+var HEADERS = {
+  "content-type": "application/json; charset=utf-8",
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type, x-push-key",
+  "x-robots-tag": "noindex, nofollow, noarchive",
+  "cache-control": "public, max-age=60"
+};
+var NO_STORE = { ...HEADERS, "cache-control": "no-store" };
+function json(payload, status = 200) {
+  return new Response(JSON.stringify(payload, null, 2), {
+    status,
+    headers: status >= 400 ? NO_STORE : HEADERS
+  });
+}
+var schemaReady = false;
+async function ensureSchema(env) {
+  if (schemaReady) return;
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS snapshots (kind TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)"
+  ).run();
+  schemaReady = true;
+}
+async function readSnapshot(env, kind) {
+  await ensureSchema(env);
+  const row = await env.DB.prepare("SELECT payload, updated_at FROM snapshots WHERE kind = ?").bind(kind).first();
+  if (!row) return null;
+  return { data: JSON.parse(row.payload), updatedAt: row.updated_at };
+}
+async function writeSnapshot(env, kind, data) {
+  await ensureSchema(env);
+  await env.DB.prepare(
+    "INSERT INTO snapshots (kind, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(kind) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at"
+  ).bind(kind, JSON.stringify(data), Date.now()).run();
+}
+var norm = (value) => String(value ?? "").toLowerCase().trim();
+var teamKey = (name) => norm(name).replace(/[^a-z0-9]/g, "");
+function teamIndex(teams) {
+  const index = /* @__PURE__ */ new Map();
+  for (const team of teams ?? []) {
+    if (team && team.name) index.set(teamKey(team.name), team);
+  }
+  return index;
+}
+function collectTeams(matches, events) {
+  const names = /* @__PURE__ */ new Map();
+  const add = (name, logo) => {
+    const key = norm(name);
+    if (!key) return;
+    const existing = names.get(key);
+    if (existing) {
+      if (!existing.logo && logo) existing.logo = logo;
+      return;
+    }
+    names.set(key, { id: 0, name, url: null, logo: logo ?? null });
+  };
+  for (const match of matches ?? []) {
+    add(match.team1?.name, match.team1?.logo);
+    add(match.team2?.name, match.team2?.logo);
+  }
+  for (const event of events ?? []) {
+    for (const team of event.teams ?? []) add(team, null);
+  }
+  return Array.from(names.values());
+}
+function teamView(name, matches, events) {
+  const wanted = norm(name);
+  const mine = (matches ?? []).filter(
+    (match) => norm(match.team1?.name) === wanted || norm(match.team2?.name) === wanted
+  );
+  const logo = mine.find((match) => norm(match.team1?.name) === wanted)?.team1?.logo ?? mine.find((match) => norm(match.team2?.name) === wanted)?.team2?.logo ?? null;
+  const uniqueEvents = /* @__PURE__ */ new Map();
+  for (const match of mine) {
+    if (!match.event?.name) continue;
+    const key = match.event.id != null ? `id:${match.event.id}` : `name:${norm(match.event.name)}`;
+    if (!uniqueEvents.has(key)) {
+      uniqueEvents.set(key, {
+        id: match.event.id ?? null,
+        name: match.event.name,
+        url: match.event.id != null ? `https://www.hltv.org/events/${match.event.id}/x` : null,
+        logo: match.event.logo ?? null,
+        startsAt: null,
+        endsAt: null,
+        matches: 0
+      });
+    }
+    uniqueEvents.get(key).matches += 1;
+  }
+  for (const event of events ?? []) {
+    const key = event.id != null ? `id:${event.id}` : null;
+    if (!key || !uniqueEvents.has(key)) continue;
+    uniqueEvents.set(key, { ...uniqueEvents.get(key), startsAt: event.startsAt ?? null, endsAt: event.endsAt ?? null });
+  }
+  return {
+    team: { id: 0, name, url: null, logo, country: null, flag: null },
+    upcoming: mine.sort((a, b) => (a.startsAt ?? 0) - (b.startsAt ?? 0)),
+    events: Array.from(uniqueEvents.values())
+  };
+}
+function searchCountries(teams, query) {
+  const wanted = norm(query);
+  if (!wanted || wanted.length < 3) return [];
+  const hits = /* @__PURE__ */ new Map();
+  for (const team of teams ?? []) {
+    const country = String(team?.country ?? "").trim();
+    const key = norm(country);
+    if (!country || key === "other" || key === "world" || !key.includes(wanted)) continue;
+    const hit = hits.get(key) ?? { name: country, teams: 0, flag: team.flag ?? null };
+    hit.teams += 1;
+    if (!hit.flag && team.flag) hit.flag = team.flag;
+    hits.set(key, hit);
+  }
+  return [...hits.values()].sort((a, b) => b.teams - a.teams).slice(0, 4);
+}
+function countryView(country, matches, teams) {
+  const wanted = norm(country);
+  const index = teamIndex(teams);
+  const countryOf = (name) => name ? norm(index.get(teamKey(name))?.country) : "";
+  const upcoming = (matches ?? []).filter((match) => countryOf(match.team1?.name) === wanted || countryOf(match.team2?.name) === wanted).sort((a, b) => (a.startsAt ?? 0) - (b.startsAt ?? 0));
+  const members = (teams ?? []).filter((team) => norm(team.country) === wanted);
+  const events = /* @__PURE__ */ new Map();
+  for (const match of upcoming) {
+    if (!match.event || !match.event.name) continue;
+    const key = String(match.event.id ?? match.event.name);
+    if (events.has(key)) continue;
+    events.set(key, {
+      id: match.event.id ?? null,
+      name: match.event.name,
+      url: match.event.id != null ? `https://www.hltv.org/events/${match.event.id}/x` : null,
+      logo: match.event.logo ?? null,
+      startsAt: null,
+      endsAt: null,
+      matches: 0
+    });
+    events.get(key).matches += 1;
+  }
+  return {
+    team: {
+      id: 0,
+      name: members[0]?.country ?? country,
+      url: null,
+      logo: null,
+      country: `${members.length} teams`,
+      flag: members.find((team) => team.flag)?.flag ?? null
+    },
+    upcoming,
+    events: Array.from(events.values()),
+    teams: members.map((team) => team.name)
+  };
+}
+async function handleApi(request, url, env) {
+  if (url.pathname === "/api/push") {
+    if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+    const key = request.headers.get("x-push-key") ?? "";
+    if (!env.PUSH_KEY || key !== env.PUSH_KEY) return json({ error: "Unauthorized." }, 401);
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") return json({ error: "Invalid JSON body." }, 400);
+    const stored = [];
+    for (const kind of ["matches", "events", "results", "teams"]) {
+      if (Array.isArray(body[kind])) {
+        await writeSnapshot(env, kind, body[kind]);
+        stored.push(`${kind}:${body[kind].length}`);
+      }
+    }
+    if (!stored.length) return json({ error: "Nothing to store (send matches/events/results)." }, 400);
+    return json({ ok: true, stored, at: Date.now() });
+  }
+  if (request.method !== "GET") return json({ error: "Method not allowed." }, 405);
+  if (url.pathname === "/api/meta") {
+    const kinds = ["matches", "events", "results", "teams"];
+    const out = {};
+    for (const kind of kinds) {
+      const snapshot = await readSnapshot(env, kind);
+      out[kind] = snapshot ? { count: snapshot.data.length, updatedAt: new Date(snapshot.updatedAt).toISOString() } : null;
+    }
+    return json({ snapshots: out, hint: "Run `npm run push` locally to refresh." });
+  }
+  if (url.pathname === "/api/matches") {
+    const snapshot = await readSnapshot(env, "matches");
+    if (!snapshot) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
+    return json(snapshot.data);
+  }
+  if (url.pathname === "/api/events") {
+    const snapshot = await readSnapshot(env, "events");
+    if (!snapshot) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
+    return json(snapshot.data);
+  }
+  if (url.pathname === "/api/results") {
+    const snapshot = await readSnapshot(env, "results");
+    if (!snapshot) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
+    const offset = Number(url.searchParams.get("offset") ?? 0) || 0;
+    return json(snapshot.data.slice(offset, offset + 100));
+  }
+  if (url.pathname === "/api/search") {
+    const query = norm(url.searchParams.get("q"));
+    if (query.length < 2) return json({ error: "Type at least 2 characters." }, 400);
+    const [matches, events, directory] = await Promise.all([
+      readSnapshot(env, "matches"),
+      readSnapshot(env, "events"),
+      readSnapshot(env, "teams")
+    ]);
+    const teams = collectTeams(matches?.data, events?.data).filter((team) => norm(team.name).includes(query));
+    return json({
+      query,
+      teams: teams.slice(0, 8),
+      countries: query.length >= 3 ? searchCountries(directory?.data, query) : [],
+      updatedAt: matches ? new Date(matches.updatedAt).toISOString() : null
+    });
+  }
+  const countryMatch = url.pathname.match(/^\/api\/country\/(.+)$/);
+  if (countryMatch) {
+    const country = decodeURIComponent(countryMatch[1]).trim();
+    if (!country) return json({ error: "Name a country, e.g. /api/country/Sweden." }, 400);
+    const [matches, directory] = await Promise.all([readSnapshot(env, "matches"), readSnapshot(env, "teams")]);
+    if (!matches) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
+    if (!directory) {
+      return json({ error: "The snapshot has no team countries yet \u2014 run `npm run push` locally." }, 503);
+    }
+    return json({ ...countryView(country, matches.data, directory.data), updatedAt: new Date(matches.updatedAt).toISOString() });
+  }
+  const teamMatch = url.pathname.match(/^\/api\/team\/(\d+)$/);
+  if (teamMatch) {
+    const name = url.searchParams.get("name");
+    if (!name) return json({ error: "This hosted API looks teams up by name: /api/team/0?name=FaZe." }, 400);
+    const [matches, events] = await Promise.all([readSnapshot(env, "matches"), readSnapshot(env, "events")]);
+    if (!matches) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
+    return json({ ...teamView(name, matches.data, events?.data), updatedAt: new Date(matches.updatedAt).toISOString() });
+  }
+  return json({ error: "Unknown endpoint." }, 404);
+}
+var api_default = {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: HEADERS });
+    if (url.pathname.startsWith("/api/")) {
+      try {
+        return await handleApi(request, url, env);
+      } catch (error) {
+        return json({ error: String(error && error.message ? error.message : error) }, 500);
+      }
+    }
+    return env.ASSETS.fetch(request);
+  }
+};
+export {
+  api_default as default
+};

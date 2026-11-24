@@ -1,0 +1,53 @@
+# Keeps the hosted cs2api snapshot fresh for free.
+#
+# The Worker cannot scrape hltv.org (Cloudflare 403 for its fetch, 429 from every
+# free renderer because Workers share egress IPs), so a GitHub runner does it:
+# it installs curl-impersonate, runs `npm run push`, and the Worker's D1 snapshot
+# is replaced. Public repos have unlimited Actions minutes; a private repo's
+# 2000 free minutes/month comfortably covers a 20-minute cadence (~2500 s/day).
+#
+# One-time setup:
+#   1. Push this project to a GitHub repository.
+#   2. Repo → Settings → Secrets and variables → Actions → New repository secret
+#      Name: PUSH_KEY   Value: the contents of .secrets/push-key
+#   3. Actions tab → "Push cs2api snapshot" → Run workflow (first run builds the
+#      team-country directory, so it is the slow one).
+name: Push cs2api snapshot
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: push-snapshot
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore team-country cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/teams.json
+          key: teams-${{ github.run_id }}
+          restore-keys: teams-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install curl-impersonate
+        run: npm run setup:curl
+
+      - name: Scrape and push
+        env:
+          PUSH_KEY: ${{ secrets.PUSH_KEY }}
+        run: npm run push

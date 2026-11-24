@@ -1,0 +1,88 @@
+/**
+ * Scrape locally (curl-impersonate works here) and push the parsed JSON to the
+ * hosted cs2api on Freebuff Sites, which stores it in D1 and serves it.
+ *
+ *   npm run push                one push
+ *   npm run push:watch          every 5 minutes
+ *   node --experimental-strip-types src/push.ts --watch 2
+ *
+ * Env:
+ *   SITE_URL   default https://cs2api-461yz8-preview.freebuff.site
+ *   PUSH_KEY   defaults to the contents of .secrets/push-key
+ */
+import { readFile } from 'node:fs/promises';
+import { HltvClient } from './client.ts';
+import { resolveDirectory } from './directory.ts';
+
+const SITE_URL = (process.env.SITE_URL ?? 'https://cs2api-461yz8-preview.freebuff.site').replace(/\/$/, '');
+
+async function pushKey(): Promise<string> {
+  if (process.env.PUSH_KEY) return process.env.PUSH_KEY.trim();
+  try {
+    return (await readFile('.secrets/push-key', 'utf8')).trim();
+  } catch {
+    throw new Error('No push key: set PUSH_KEY or create .secrets/push-key');
+  }
+}
+
+async function runOnce(): Promise<void> {
+  const started = Date.now();
+  // ~1 request/second: match pages get Cloudflare-challenged when requested faster.
+  const client = new HltvClient({ delayMs: 900 });
+  try {
+    console.log(`Scraping with transport: ${client.http.transport}`);
+
+    const matches = await client.getMatches();
+    console.log(`  matches: ${matches.length}`);
+
+    const { ongoing, upcoming } = await client.getEvents();
+    console.log(`  events: ${ongoing.length + upcoming.length} (${ongoing.length} ongoing, ${upcoming.length} upcoming)`);
+
+    const results = await client.getResults({ offset: 0 });
+    console.log(`  results: ${results.length}`);
+
+    // One match page covers two teams' countries; only unknown teams are fetched.
+    // Finished results are included because many upcoming cards are still TBD.
+    const { directory, fetched, missing } = await resolveDirectory(client, [...matches, ...results], {
+      // Learned teams are cached, so a capped run simply continues next time.
+      limit: 150,
+      onProgress: (done, total) => {
+        if (done % 25 === 0 || done === total) console.log(`  team countries: ${done}/${total} match pages`);
+      },
+    });
+    const teams = Object.values(directory);
+    console.log(`  teams: ${teams.length} known (${fetched} new)`);
+    if (missing.length) console.log(`  ! no country yet for ${missing.length} teams (they fill in on later pushes)`);
+
+    const res = await fetch(`${SITE_URL}/api/push`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-push-key': await pushKey() },
+      body: JSON.stringify({ matches, events: [...ongoing, ...upcoming], results, teams, pushedAt: Date.now() }),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as { error?: string; stored?: string[] };
+    if (!res.ok) throw new Error(`push failed (HTTP ${res.status}): ${body.error ?? 'unknown error'}`);
+
+    console.log(`Pushed to ${SITE_URL} in ${((Date.now() - started) / 1000).toFixed(1)}s: ${(body.stored ?? []).join(', ')}`);
+  } finally {
+    await client.close();
+  }
+}
+
+const watchIndex = process.argv.indexOf('--watch');
+const minutes = watchIndex > -1 ? Number(process.argv[watchIndex + 1] ?? 5) : 0;
+
+if (minutes > 0) {
+  console.log(`Watching: pushing every ${minutes} minute(s). Ctrl+C to stop.`);
+  for (;;) {
+    try {
+      await runOnce();
+    } catch (error) {
+      console.error(`push failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    console.log(`Next push in ${minutes} minute(s).`);
+    await new Promise((resolve) => setTimeout(resolve, minutes * 60_000));
+  }
+} else {
+  await runOnce();
+}
