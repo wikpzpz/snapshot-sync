@@ -4,7 +4,7 @@ import { load } from 'cheerio/slim';
 import type { HltvClient } from './client.ts';
 import { clean, cleanName, imgUrl, pathOf, toInt } from './parse.ts';
 import { coreCountry, parseRanking, parseTeamProfileHead } from './team.ts';
-import type { MatchCard, TeamDirectoryEntry, TeamEvent, TeamRef } from './types.ts';
+import type { MatchCard, MatchResult, TeamDirectoryEntry, TeamEvent, TeamRef } from './types.ts';
 
 const FILE = '.cache/teams.json';
 /** Committed seed, so a fresh CI checkout starts with the countries we know. */
@@ -346,6 +346,10 @@ export interface CountryView {
   upcoming: MatchCard[];
   events: TeamEvent[];
   teams: string[];
+  /** How many days back `recent` reaches. */
+  recentDays: number;
+  /** Finished matches of this country's teams, newest first. */
+  recent: MatchResult[];
 }
 
 /** Every upcoming/live match of the teams that `country` claims, plus their events. */
@@ -353,6 +357,8 @@ export function countryView(
   country: string,
   matches: MatchCard[],
   directory: Record<string, TeamDirectoryEntry>,
+  results: MatchResult[] = [],
+  days = 3,
 ): CountryView {
   const wanted = country.trim().toLowerCase();
   const countryOf = (name: string | null | undefined): string | null =>
@@ -392,5 +398,31 @@ export function countryView(
     upcoming,
     events: [...events.values()],
     teams: members.map((team) => team.name),
+    recentDays: days,
+    recent: countryResults(country, results, directory, days),
   };
+}
+
+/** Finished matches from the last `days` days played by one country's teams. */
+export function countryResults(
+  country: string,
+  results: MatchResult[],
+  directory: Record<string, TeamDirectoryEntry>,
+  days = 3,
+): MatchResult[] {
+  const wanted = country.trim().toLowerCase();
+  const memberKeys = new Set(
+    Object.values(directory)
+      .filter((team) => (homeCountry(team) ?? '').toLowerCase() === wanted)
+      .map((team) => teamKey(team.name)),
+  );
+  const since = days > 0 ? Date.now() - days * 86_400_000 : 0;
+  return results
+    .filter((row) => (row.startsAt ?? 0) >= since)
+    .filter(
+      (row) =>
+        memberKeys.has(teamKey(row.team1?.name ?? '')) || memberKeys.has(teamKey(row.team2?.name ?? '')),
+    )
+    .sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0))
+    .map((row) => enrichMatch(row, directory, country));
 }

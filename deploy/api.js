@@ -17,6 +17,7 @@
  *   GET  /api/search?q=            teams and countries found in the snapshot
  *   GET  /api/team/:id?name=NAME   a team's upcoming matches + events
  *   GET  /api/country/:name        every upcoming match of that country's teams
+ *   GET  /api/country/:name/results results row: finished matches, last `days` days
  *   POST /api/push                 replace snapshots (header: x-push-key)
  */
 const HEADERS = {
@@ -207,8 +208,34 @@ function searchCountries(teams, query) {
   return [...hits.values()].sort((a, b) => b.teams - a.teams).slice(0, 4);
 }
 
+/** Days of finished matches a country result row covers (clamped to 0–30). */
+function resultDays(raw) {
+  if (raw == null || raw === '') return 3;
+  const days = Number(raw);
+  if (!Number.isFinite(days)) return 3;
+  return Math.max(0, Math.min(30, Math.trunc(days)));
+}
+
+/**
+ * Finished matches from the last `days` days played by teams of one country —
+ * the "results row" a site can poll and store (newest first).
+ */
+function countryResults(country, results, teams, days) {
+  const wanted = norm(country);
+  const index = teamIndex(teams);
+  const memberKeys = new Set(
+    (teams ?? []).filter((team) => norm(homeCountry(team)) === wanted).map((team) => teamKey(team.name)),
+  );
+  const since = days > 0 ? Date.now() - days * 86_400_000 : 0;
+  return (results ?? [])
+    .filter((row) => (row.startsAt ?? 0) >= since)
+    .filter((row) => memberKeys.has(teamKey(row.team1?.name)) || memberKeys.has(teamKey(row.team2?.name)))
+    .sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0))
+    .map((row) => enrichMatch(row, index, country));
+}
+
 /** Matches of every team that `country` claims, plus the events they belong to. */
-function countryView(country, matches, teams) {
+function countryView(country, matches, teams, results, days = 3) {
   const wanted = norm(country);
   const index = teamIndex(teams);
   const countryOf = (name) => (name ? norm(homeCountry(index.get(teamKey(name)))) : '');
@@ -249,6 +276,8 @@ function countryView(country, matches, teams) {
     upcoming,
     events: Array.from(events.values()),
     teams: members.map((team) => team.name),
+    recentDays: days,
+    recent: countryResults(country, results, teams, days),
   };
 }
 
@@ -363,17 +392,45 @@ async function handleApi(request, url, env) {
     });
   }
 
+  // Finished matches of one country's teams, e.g. /api/country/Sweden/results?days=3
+  const countryResultsMatch = url.pathname.match(/^\/api\/country\/(.+)\/results$/);
+  if (countryResultsMatch) {
+    const country = decodeURIComponent(countryResultsMatch[1]).trim();
+    if (!country) return json({ error: 'Name a country, e.g. /api/country/Sweden/results?days=3.' }, 400);
+    const [results, directory] = await Promise.all([readSnapshot(env, 'results'), readSnapshot(env, 'teams')]);
+    if (!results) return json({ error: 'No results snapshot yet — run `npm run push` locally.' }, 503);
+    const days = resultDays(url.searchParams.get('days'));
+    const rows = countryResults(country, results.data, directory?.data, days);
+    const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
+    const limit = Math.max(1, Math.min(100, Number(url.searchParams.get('limit') ?? 100) || 100));
+    return json({
+      country,
+      days,
+      total: rows.length,
+      results: rows.slice(offset, offset + limit),
+      updatedAt: new Date(results.updatedAt).toISOString(),
+    });
+  }
+
   // Every upcoming match of the teams from one country, e.g. /api/country/Sweden
   const countryMatch = url.pathname.match(/^\/api\/country\/(.+)$/);
   if (countryMatch) {
     const country = decodeURIComponent(countryMatch[1]).trim();
     if (!country) return json({ error: 'Name a country, e.g. /api/country/Sweden.' }, 400);
-    const [matches, directory] = await Promise.all([readSnapshot(env, 'matches'), readSnapshot(env, 'teams')]);
+    const [matches, directory, results] = await Promise.all([
+      readSnapshot(env, 'matches'),
+      readSnapshot(env, 'teams'),
+      readSnapshot(env, 'results'),
+    ]);
     if (!matches) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
     if (!directory) {
       return json({ error: 'The snapshot has no team countries yet — run `npm run push` locally.' }, 503);
     }
-    return json({ ...countryView(country, matches.data, directory.data), updatedAt: new Date(matches.updatedAt).toISOString() });
+    const days = resultDays(url.searchParams.get('days'));
+    return json({
+      ...countryView(country, matches.data, directory.data, results?.data, days),
+      updatedAt: new Date(matches.updatedAt).toISOString(),
+    });
   }
 
   const teamMatch = url.pathname.match(/^\/api\/team\/(\d+)$/);

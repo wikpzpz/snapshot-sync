@@ -143,7 +143,22 @@ function searchCountries(teams, query) {
   }
   return [...hits.values()].sort((a, b) => b.teams - a.teams).slice(0, 4);
 }
-function countryView(country, matches, teams) {
+function resultDays(raw) {
+  if (raw == null || raw === "") return 3;
+  const days = Number(raw);
+  if (!Number.isFinite(days)) return 3;
+  return Math.max(0, Math.min(30, Math.trunc(days)));
+}
+function countryResults(country, results, teams, days) {
+  const wanted = norm(country);
+  const index = teamIndex(teams);
+  const memberKeys = new Set(
+    (teams ?? []).filter((team) => norm(homeCountry(team)) === wanted).map((team) => teamKey(team.name))
+  );
+  const since = days > 0 ? Date.now() - days * 864e5 : 0;
+  return (results ?? []).filter((row) => (row.startsAt ?? 0) >= since).filter((row) => memberKeys.has(teamKey(row.team1?.name)) || memberKeys.has(teamKey(row.team2?.name))).sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0)).map((row) => enrichMatch(row, index, country));
+}
+function countryView(country, matches, teams, results, days = 3) {
   const wanted = norm(country);
   const index = teamIndex(teams);
   const countryOf = (name) => name ? norm(homeCountry(index.get(teamKey(name)))) : "";
@@ -176,7 +191,9 @@ function countryView(country, matches, teams) {
     },
     upcoming,
     events: Array.from(events.values()),
-    teams: members.map((team) => team.name)
+    teams: members.map((team) => team.name),
+    recentDays: days,
+    recent: countryResults(country, results, teams, days)
   };
 }
 async function handleApi(request, url, env) {
@@ -271,16 +288,42 @@ async function handleApi(request, url, env) {
       updatedAt: matches ? new Date(matches.updatedAt).toISOString() : null
     });
   }
+  const countryResultsMatch = url.pathname.match(/^\/api\/country\/(.+)\/results$/);
+  if (countryResultsMatch) {
+    const country = decodeURIComponent(countryResultsMatch[1]).trim();
+    if (!country) return json({ error: "Name a country, e.g. /api/country/Sweden/results?days=3." }, 400);
+    const [results, directory] = await Promise.all([readSnapshot(env, "results"), readSnapshot(env, "teams")]);
+    if (!results) return json({ error: "No results snapshot yet \u2014 run `npm run push` locally." }, 503);
+    const days = resultDays(url.searchParams.get("days"));
+    const rows = countryResults(country, results.data, directory?.data, days);
+    const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
+    const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") ?? 100) || 100));
+    return json({
+      country,
+      days,
+      total: rows.length,
+      results: rows.slice(offset, offset + limit),
+      updatedAt: new Date(results.updatedAt).toISOString()
+    });
+  }
   const countryMatch = url.pathname.match(/^\/api\/country\/(.+)$/);
   if (countryMatch) {
     const country = decodeURIComponent(countryMatch[1]).trim();
     if (!country) return json({ error: "Name a country, e.g. /api/country/Sweden." }, 400);
-    const [matches, directory] = await Promise.all([readSnapshot(env, "matches"), readSnapshot(env, "teams")]);
+    const [matches, directory, results] = await Promise.all([
+      readSnapshot(env, "matches"),
+      readSnapshot(env, "teams"),
+      readSnapshot(env, "results")
+    ]);
     if (!matches) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
     if (!directory) {
       return json({ error: "The snapshot has no team countries yet \u2014 run `npm run push` locally." }, 503);
     }
-    return json({ ...countryView(country, matches.data, directory.data), updatedAt: new Date(matches.updatedAt).toISOString() });
+    const days = resultDays(url.searchParams.get("days"));
+    return json({
+      ...countryView(country, matches.data, directory.data, results?.data, days),
+      updatedAt: new Date(matches.updatedAt).toISOString()
+    });
   }
   const teamMatch = url.pathname.match(/^\/api\/team\/(\d+)$/);
   if (teamMatch) {

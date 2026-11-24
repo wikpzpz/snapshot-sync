@@ -89,7 +89,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     }
     const matches = await cached('matches', () => client.getMatches());
     const directory = await cached('directory', () => loadDirectory());
-    sendJson(res, 200, countryView(country, matches, directory));
+    const results = await cached('results', () => client.getResults({ offset: 0 }));
+    sendJson(res, 200, countryView(country, matches, directory, results));
     return;
   }
 

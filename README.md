@@ -95,10 +95,12 @@ npm run push     # scrape locally, upload snapshots to the site's D1
 GET  /api/meta                 freshness + row counts
 GET  /api/matches              241 live/upcoming cards
 GET  /api/events               96 ongoing/upcoming events
-GET  /api/results?offset=      100 finished matches per page
+GET  /api/results?offset=      100 finished matches per page (400 stored ≈ 3.5 days)
+GET  /api/results?days=3&team=FaZe        filter by age and team
 GET  /api/search?q=sweden      teams and countries found in the snapshot
-GET  /api/team/0?name=FaZe     that team's upcoming matches + events
-GET  /api/country/Sweden       every upcoming match of that country's teams
+GET  /api/team/0?name=FaZe     upcoming matches, events and `recent` results (3 days)
+GET  /api/country/Sweden       upcoming matches + `recent` results row (last 3 days)
+GET  /api/country/Sweden/results?days=3   finished matches of that country's teams
 POST /api/push                 (header: x-push-key) replace snapshots
 ```
 
@@ -107,7 +109,7 @@ POST /api/push                 (header: x-push-key) replace snapshots
 
 ### Keeping it fresh for free (no PC needed)
 
-`.github/workflows/push.yml` runs `npm run push` on a GitHub runner every 20 minutes. GitHub runners
+`.github/workflows/push.yml` runs `npm run push` on a GitHub runner every 25 minutes. GitHub runners
 have their own IPs and can install curl-impersonate, which is exactly what a Cloudflare-protected
 site needs; public repos get unlimited Actions minutes, and a private repo's 2 000 free minutes
 cover a 20-minute cadence.
@@ -162,6 +164,47 @@ Trade-offs:
 ```bash
 npm run build:worker   # esbuild bundle → deploy/worker.js (~10 KB)
 ```
+
+### Country cores (who is actually Swedish)
+
+A team's HLTV label is its **org region**, not its roster: `fnatic` says "Ukraine",
+`Ninjas in Pyjamas` says "Europe". Country views therefore use the **core** — the majority
+nationality of the starting five, read from the player flags on `/ranking/teams` (free, no extra
+requests) — and fall back to the org label when a roster is genuinely mixed (`core: null`).
+`/api/team` exposes all three: `country` (core), `region` (org label), `core` + `coreCount`/`coreSize`.
+
+### The results row (last 3 days per country)
+
+`GET /api/country/Sweden/results?days=3` returns one self-contained row set, newest first, built for a
+site to poll and store:
+
+```json
+{
+  "country": "Sweden",
+  "days": 3,
+  "total": 6,
+  "results": [
+    {
+      "id": 2391234,
+      "startsAt": 1763996820000,
+      "dateLabel": "24th of November 2026",
+      "score": { "team1": 2, "team2": 1 },
+      "team1": { "name": "Lilmix", "country": "Sweden", "flag": "...SE.gif" },
+      "team2": { "name": "MAYBE", "country": "Poland", "flag": "...PL.gif" },
+      "event": { "id": 8123, "name": "..." },
+      "map": null,
+      "starred": false,
+      "countryTeam": "team1"
+    }
+  ],
+  "updatedAt": "2026-11-24T19:18:00.414Z"
+}
+```
+
+`days` accepts `0`–`30` (`0` = everything stored, currently ~36 Swedish matches), `offset` and `limit`
+(max 100) page through it. The same rows are also embedded in `/api/country/Sweden` as `recent` +
+`recentDays`, so a single call gives fixtures and results together. `countryTeam` says which side is
+from the requested country, so a loss (`Phantom Academy 1-0 Lilmix`) still reads correctly.
 
 ## Using it from your own site (e.g. secs.se, on Cloudflare)
 
