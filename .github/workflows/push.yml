@@ -1,30 +1,17 @@
-# Keeps the hosted cs2api snapshot fresh for free, with no PC involved.
+# Refreshes the JSON snapshot behind a read-only HTTP API, from a free runner.
 #
-# The Worker cannot scrape hltv.org (403 for its fetch, 429 from every free
-# renderer because Workers share egress IPs), so this runner does it: it installs
-# curl-impersonate, runs `npm run push`, and the Worker's D1 snapshot is replaced.
+# The serving Worker cannot fetch the upstream site itself (blocked by its TLS
+# fingerprint), so this runner does it: it installs curl-impersonate, runs the
+# scrape, and POSTs the snapshots to the API's push endpoint.
 #
-# Minutes: a public repo has unlimited Actions minutes, so a 5-minute schedule
-# would be free. A PRIVATE repo gets 2 000 free minutes/month and GitHub bills a
-# run as at least one minute — 288 runs/day would burn through that in a week, so
-# the schedule stays at roughly every 25 minutes (1 740 min/month).
-name: Push cs2api snapshot
+# Public repo => unlimited Actions minutes, so the schedule can run often. The
+# schedule event is best-effort (GitHub can start a run late or drop a slot
+# without leaving a failed run), so the minutes are staggered and avoid :00.
+name: Sync snapshot
 
 on:
   schedule:
-    # A run takes ~25 s but GitHub bills it as a full minute, and a private repo
-    # gets 2 000 free minutes/month:
-    #   */5  = 288/day = ~8 600/month  → needs a public repo (unlimited minutes)
-    #   */15 =  96/day = ~2 880/month  → too much for private
-    #   3x/hour      =  72/day = ~2 160/month
-    #   current      =  58/day = ~1 740/month  → private-safe
-    #
-    # The schedule event is best-effort, not a timer with an SLA: GitHub's shared
-    # cron dispatcher can start a run minutes or (on a brand-new private repo, while
-    # the cron is still being registered) hours late, and a skipped slot leaves no
-    # run at all. The top of the hour is the busiest moment, so the minutes here
-    # deliberately avoid :00 and are spread across the hour.
-    - cron: '4,29,54 * * * *'
+    - cron: '3,8,13,18,23,28,33,38,43,48,53,58 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -36,8 +23,7 @@ concurrency:
 
 env:
   SITE_URL: https://cs2api-461yz8-preview.freebuff.site
-  # GitHub's runners are challenged on chrome131 but served by chrome116
-  # (probed: 131/124/120/101 challenged, 116/110/107/104/100/99 fine).
+  # Chrome 116's TLS fingerprint is the one the upstream accepts from runners.
   HLTV_IMPERSONATE: chrome116
 
 jobs:
@@ -51,7 +37,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Restore team-country cache
+      - name: Restore cache
         uses: actions/cache@v4
         with:
           path: .cache/teams.json
@@ -69,7 +55,7 @@ jobs:
           PUSH_KEY: ${{ secrets.PUSH_KEY }}
         run: npm run push
 
-      - name: Confirm the site serves the new snapshot
+      - name: Confirm the API serves the new snapshot
         run: |
           curl -fsS "$SITE_URL/api/meta" | tee meta.json
           node -e "const m=require('./meta.json').snapshots; console.log('matches', m.matches.count, 'at', m.matches.updatedAt, '| teams', m.teams && m.teams.count)"

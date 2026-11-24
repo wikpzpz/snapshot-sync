@@ -1,9 +1,9 @@
 {
-  "name": "cs2api",
+  "name": "snapshot-sync",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Typed client for HLTV.org matches, results and events, reverse engineered from the site's public web endpoints.",
+  "description": "JSON snapshot pipeline for a small read-only HTTP API.",
   "engines": {
     "node": ">=22.16"
   },
