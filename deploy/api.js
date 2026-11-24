@@ -80,6 +80,25 @@ function teamIndex(teams) {
   return index;
 }
 
+/**
+ * Stamp both teams with their country/flag, and with `country` say which side is
+ * from that country (`countryTeam`: 'team1' | 'team2' | 'both' | null).
+ */
+function enrichMatch(match, index, country) {
+  const entryOf = (team) => (team && team.name ? index.get(teamKey(team.name)) ?? null : null);
+  const withCountry = (team) =>
+    team ? { ...team, country: entryOf(team)?.country ?? null, flag: entryOf(team)?.flag ?? null } : null;
+
+  const team1 = withCountry(match.team1);
+  const team2 = withCountry(match.team2);
+  if (!country) return { ...match, team1, team2 };
+
+  const wanted = norm(country);
+  const is1 = norm(team1?.country) === wanted;
+  const is2 = norm(team2?.country) === wanted;
+  return { ...match, team1, team2, countryTeam: is1 && is2 ? 'both' : is1 ? 'team1' : is2 ? 'team2' : null };
+}
+
 /** Unique team names found anywhere in the snapshots. */
 function collectTeams(matches, events) {
   const names = new Map();
@@ -173,6 +192,7 @@ function countryView(country, matches, teams) {
 
   const upcoming = (matches ?? [])
     .filter((match) => countryOf(match.team1?.name) === wanted || countryOf(match.team2?.name) === wanted)
+    .map((match) => enrichMatch(match, index, country))
     .sort((a, b) => (a.startsAt ?? 0) - (b.startsAt ?? 0));
 
   const members = (teams ?? []).filter((team) => norm(team.country) === wanted);
@@ -244,9 +264,10 @@ async function handleApi(request, url, env) {
   }
 
   if (url.pathname === '/api/matches') {
-    const snapshot = await readSnapshot(env, 'matches');
+    const [snapshot, directory] = await Promise.all([readSnapshot(env, 'matches'), readSnapshot(env, 'teams')]);
     if (!snapshot) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
-    return json(snapshot.data);
+    const index = teamIndex(directory?.data);
+    return json(snapshot.data.map((match) => enrichMatch(match, index)));
   }
 
   if (url.pathname === '/api/events') {
@@ -296,9 +317,19 @@ async function handleApi(request, url, env) {
   if (teamMatch) {
     const name = url.searchParams.get('name');
     if (!name) return json({ error: 'This hosted API looks teams up by name: /api/team/0?name=FaZe.' }, 400);
-    const [matches, events] = await Promise.all([readSnapshot(env, 'matches'), readSnapshot(env, 'events')]);
+    const [matches, events, directory] = await Promise.all([
+      readSnapshot(env, 'matches'),
+      readSnapshot(env, 'events'),
+      readSnapshot(env, 'teams'),
+    ]);
     if (!matches) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
-    return json({ ...teamView(name, matches.data, events?.data), updatedAt: new Date(matches.updatedAt).toISOString() });
+    const view = teamView(name, matches.data, events?.data);
+    const index = teamIndex(directory?.data);
+    return json({
+      ...view,
+      upcoming: view.upcoming.map((match) => enrichMatch(match, index)),
+      updatedAt: new Date(matches.updatedAt).toISOString(),
+    });
   }
 
   return json({ error: 'Unknown endpoint.' }, 404);

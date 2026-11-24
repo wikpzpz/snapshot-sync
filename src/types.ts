@@ -6,6 +6,10 @@ export interface TeamRef {
   id: number | null;
   name: string;
   logo: string | null;
+  /** Region/country, filled in by the API from the team directory when known. */
+  country?: string | null;
+  /** 30x20 flag that matches `country`. */
+  flag?: string | null;
 }
 
 export interface EventRef {
@@ -31,6 +35,8 @@ export interface MatchCard {
   team2: TeamRef | null;
   /** Live map score when the card exposes it. */
   score: { team1: number; team2: number } | null;
+  /** Set by /api/country: which side(s) belong to the requested country. */
+  countryTeam?: 'team1' | 'team2' | 'both' | null;
 }
 
 /** An entry from https://www.hltv.org/results (finished matches). */

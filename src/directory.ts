@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { load } from 'cheerio/slim';
 import type { HltvClient } from './client.ts';
 import { clean } from './parse.ts';
-import type { MatchCard, TeamDirectoryEntry, TeamEvent } from './types.ts';
+import type { MatchCard, TeamDirectoryEntry, TeamEvent, TeamRef } from './types.ts';
 
 const FILE = '.cache/teams.json';
 
@@ -142,6 +142,33 @@ export async function resolveDirectory(
   return { directory, fetched, missing };
 }
 
+/**
+ * Tag a match with the countries of its teams.
+ *
+ * With `country`, `countryTeam` says which side is from that country
+ * (`'team1'`, `'team2'`, `'both'`, or `null`), which is what a "Sweden" view
+ * needs in order to highlight the Swedish team in `Drama vs LFO 10`.
+ */
+export function enrichMatch<T extends { team1: TeamRef | null; team2: TeamRef | null }>(
+  match: T,
+  directory: Record<string, TeamDirectoryEntry>,
+  country?: string,
+): T & { countryTeam?: 'team1' | 'team2' | 'both' | null } {
+  const wanted = country?.trim().toLowerCase();
+  const entryOf = (team: TeamRef | null): TeamDirectoryEntry | null =>
+    team?.name ? directory[teamKey(team.name)] ?? null : null;
+  const withCountry = (team: TeamRef | null): TeamRef | null =>
+    team ? { ...team, country: entryOf(team)?.country ?? null, flag: entryOf(team)?.flag ?? null } : null;
+
+  const team1 = withCountry(match.team1);
+  const team2 = withCountry(match.team2);
+  if (!wanted) return { ...match, team1, team2 };
+
+  const is1 = (team1?.country ?? '').toLowerCase() === wanted;
+  const is2 = (team2?.country ?? '').toLowerCase() === wanted;
+  return { ...match, team1, team2, countryTeam: is1 && is2 ? 'both' : is1 ? 'team1' : is2 ? 'team2' : null };
+}
+
 export interface CountryHit {
   name: string;
   teams: number;
@@ -189,6 +216,7 @@ export function countryView(
 
   const upcoming = matches
     .filter((match) => countryOf(match.team1?.name) === wanted || countryOf(match.team2?.name) === wanted)
+    .map((match) => enrichMatch(match, directory, country))
     .sort((a, b) => (a.startsAt ?? 0) - (b.startsAt ?? 0));
 
   const members = Object.values(directory).filter((team) => (team.country ?? '').toLowerCase() === wanted);

@@ -75,6 +75,8 @@
       .match .when b { display: block; color: var(--text); font-weight: 600; }
       .match .teams { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 600; }
       .match .teams img { width: 18px; height: 18px; object-fit: contain; }
+      .match .teams img.flag { width: 16px; height: 11px; object-fit: cover; border-radius: 2px; }
+      .match .teams .mine { color: var(--accent); }
       .match .teams .vs { color: var(--muted); font-weight: 400; font-size: 12px; }
       .match .meta { text-align: right; font-size: 12px; color: var(--muted); }
       .badge { display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; background: var(--live); color: #fff; }
@@ -246,8 +248,10 @@
               <a href="${match.url}" target="_blank" rel="noreferrer">
                 <div class="teams">
                   ${t1?.logo ? `<img src="${t1.logo}" alt="" />` : ''}<span class="n1"></span>
+                  ${t1?.flag ? `<img class="flag" src="${t1.flag}" alt="" />` : ''}
                   <span class="vs">vs</span>
                   ${t2?.logo ? `<img src="${t2.logo}" alt="" />` : ''}<span class="n2"></span>
+                  ${t2?.flag ? `<img class="flag" src="${t2.flag}" alt="" />` : ''}
                 </div>
               </a>
             </div>
@@ -257,6 +261,9 @@
             </div>`;
           row.querySelector('.n1').textContent = t1?.name ?? 'TBD';
           row.querySelector('.n2').textContent = t2?.name ?? 'TBD';
+          // In a country view, highlight the team that belongs to it.
+          if (match.countryTeam === 'team1' || match.countryTeam === 'both') row.querySelector('.n1').classList.add('mine');
+          if (match.countryTeam === 'team2' || match.countryTeam === 'both') row.querySelector('.n2').classList.add('mine');
           row.querySelector('.fmt').textContent = match.format ?? '';
           matches.appendChild(row);
         }

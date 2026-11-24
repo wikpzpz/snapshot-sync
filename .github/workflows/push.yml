@@ -16,7 +16,11 @@ name: Push cs2api snapshot
 
 on:
   schedule:
-    - cron: '*/20 * * * *'
+    # Every 5 minutes = GitHub's minimum, i.e. as close to live as this can get.
+    # Actions often starts the run a few minutes late. A warm directory cache
+    # makes a run ~40 s; public repos have unlimited minutes, while a private
+    # repo should use '*/45 * * * *' to stay inside its 2 000 free minutes.
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 concurrency:

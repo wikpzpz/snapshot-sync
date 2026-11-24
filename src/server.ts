@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HltvClient } from './client.ts';
-import { countryView, loadDirectory, searchCountries } from './directory.ts';
+import { countryView, enrichMatch, loadDirectory, searchCountries } from './directory.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(HERE, '..', 'public');
@@ -82,7 +82,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
   if (teamMatch) {
     const id = Number(teamMatch[1]);
     const data = await cached(`team:${id}`, () => client.getTeamUpcoming(id));
-    sendJson(res, 200, data);
+    const directory = await cached('directory', () => loadDirectory());
+    sendJson(res, 200, { ...data, upcoming: data.upcoming.map((match) => enrichMatch(match, directory)) });
     return;
   }
 
