@@ -39,11 +39,16 @@ async function writeSnapshot(env, kind, data) {
     "INSERT INTO snapshots (kind, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(kind) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at"
   ).bind(kind, JSON.stringify(data), Date.now()).run();
 }
+var hasDetailContent = (detail) => Boolean(
+  detail && ((detail.veto?.steps?.length ?? 0) > 0 || (detail.lineups?.length ?? 0) > 0 || (detail.stats?.length ?? 0) > 0 || (detail.maps?.length ?? 0) > 0 || detail.team1?.name || detail.team2?.name)
+);
 async function readDetail(env, id) {
   await ensureSchema(env);
   const row = await env.DB.prepare("SELECT payload, updated_at FROM details WHERE id = ?").bind(id).first();
   if (!row) return null;
-  return { data: JSON.parse(row.payload), updatedAt: row.updated_at };
+  const data = JSON.parse(row.payload);
+  if (!hasDetailContent(data)) return null;
+  return { data, updatedAt: row.updated_at };
 }
 async function writeDetail(env, detail) {
   await ensureSchema(env);
@@ -243,14 +248,17 @@ async function handleApi(request, url, env) {
         stored.push(`${kind}:${body[kind].length}`);
       }
     }
-    if (Array.isArray(body.details)) {
+    if (Array.isArray(body.details) || Array.isArray(body.skipped)) {
       let storedDetails = 0;
-      for (const detail of body.details) {
-        if (!detail || !Number.isFinite(Number(detail.id))) continue;
+      const handled = (body.skipped ?? []).map(Number).filter((id) => Number.isFinite(id));
+      for (const detail of body.details ?? []) {
+        const id = Number(detail?.id);
+        if (!Number.isFinite(id) || !hasDetailContent(detail)) continue;
         await writeDetail(env, detail);
+        handled.push(id);
         storedDetails += 1;
       }
-      await clearQueued(env, body.details.map((detail) => Number(detail?.id)).filter((id) => Number.isFinite(id)));
+      await clearQueued(env, handled);
       if (storedDetails) stored.push(`details:${storedDetails}`);
     }
     if (!stored.length) return json({ error: "Nothing to store (send matches/events/results/details)." }, 400);

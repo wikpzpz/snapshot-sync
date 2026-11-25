@@ -78,12 +78,30 @@ async function writeSnapshot(env, kind, data) {
     .run();
 }
 
+/**
+ * A match page that the source answered with no veto, lineup, map or team is not
+ * worth caching: it is either not published yet or the page was blocked, so treat
+ * it as missing and let the next run try again.
+ */
+const hasDetailContent = (detail) =>
+  Boolean(
+    detail &&
+      ((detail.veto?.steps?.length ?? 0) > 0 ||
+        (detail.lineups?.length ?? 0) > 0 ||
+        (detail.stats?.length ?? 0) > 0 ||
+        (detail.maps?.length ?? 0) > 0 ||
+        detail.team1?.name ||
+        detail.team2?.name),
+  );
+
 /** A scraped match page (veto, lineups, player stats) by match id. */
 async function readDetail(env, id) {
   await ensureSchema(env);
   const row = await env.DB.prepare('SELECT payload, updated_at FROM details WHERE id = ?').bind(id).first();
   if (!row) return null;
-  return { data: JSON.parse(row.payload), updatedAt: row.updated_at };
+  const data = JSON.parse(row.payload);
+  if (!hasDetailContent(data)) return null;
+  return { data, updatedAt: row.updated_at };
 }
 
 async function writeDetail(env, detail) {
@@ -350,15 +368,19 @@ async function handleApi(request, url, env) {
         stored.push(`${kind}:${body[kind].length}`);
       }
     }
-    // Match page details: one row per match, and the ids just stored leave the queue.
-    if (Array.isArray(body.details)) {
+    // Match page details: one row per match, and every id the run dealt with
+    // leaves the queue (blank pages land in `skipped` so they retry later).
+    if (Array.isArray(body.details) || Array.isArray(body.skipped)) {
       let storedDetails = 0;
-      for (const detail of body.details) {
-        if (!detail || !Number.isFinite(Number(detail.id))) continue;
+      const handled = (body.skipped ?? []).map(Number).filter((id) => Number.isFinite(id));
+      for (const detail of body.details ?? []) {
+        const id = Number(detail?.id);
+        if (!Number.isFinite(id) || !hasDetailContent(detail)) continue;
         await writeDetail(env, detail);
+        handled.push(id);
         storedDetails += 1;
       }
-      await clearQueued(env, body.details.map((detail) => Number(detail?.id)).filter((id) => Number.isFinite(id)));
+      await clearQueued(env, handled);
       if (storedDetails) stored.push(`details:${storedDetails}`);
     }
 

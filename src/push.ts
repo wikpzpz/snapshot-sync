@@ -13,7 +13,7 @@
 import { readFile } from 'node:fs/promises';
 import { FeedClient } from './client.ts';
 import { learnRankedTeams, loadDirectory, resolveDirectory } from './directory.ts';
-import type { MatchCard } from './types.ts';
+import type { MatchCard, MatchDetail } from './types.ts';
 
 const SITE_URL = (process.env.SITE_URL ?? 'https://cs2api-461yz8-preview.freebuff.site').replace(/\/$/, '');
 
@@ -52,32 +52,55 @@ async function detailIds(matches: MatchCard[]): Promise<number[]> {
   return [...new Set([...queued, ...live])].slice(0, DETAIL_LIMIT);
 }
 
+/**
+ * A match page with no veto, lineup, map or team name carries nothing worth
+ * storing (the match is not published yet, or the source blanked the page), so it
+ * is reported as skipped and tried again on a later run.
+ */
+function hasDetailContent(detail: MatchDetail): boolean {
+  return Boolean(
+    detail &&
+      (detail.veto?.steps.length ||
+        detail.lineups.length ||
+        detail.stats.length ||
+        detail.maps.length ||
+        detail.team1?.name ||
+        detail.team2?.name),
+  );
+}
+
 /** Scrape the requested match pages and store them next to the snapshots. */
 async function pushDetails(client: FeedClient, matches: MatchCard[]): Promise<void> {
   const ids = await detailIds(matches);
   if (!ids.length) return;
 
-  const details = [];
+  const details: MatchDetail[] = [];
+  const skipped: number[] = [];
   for (const id of ids) {
     try {
-      details.push(await client.getMatch(id));
+      const detail = await client.getMatch(id);
+      if (hasDetailContent(detail)) details.push(detail);
+      else skipped.push(id);
     } catch (error) {
       console.warn(`  match ${id} details failed: ${String(error).slice(0, 80)}`);
+      skipped.push(id);
     }
   }
-  if (!details.length) return;
+  if (!details.length && !skipped.length) return;
 
   const res = await fetch(`${SITE_URL}/api/push`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-push-key': await pushKey() },
-    body: JSON.stringify({ details }),
+    body: JSON.stringify({ details, skipped }),
   });
   const body = (await res.json().catch(() => ({}))) as { stored?: string[]; error?: string };
   if (!res.ok) {
     console.warn(`  detail push failed (HTTP ${res.status}): ${body.error ?? 'unknown error'}`);
     return;
   }
-  console.log(`  match details: ${details.length} pushed (${(body.stored ?? []).join(', ')})`);
+  console.log(
+    `  match details: ${details.length} pushed, ${skipped.length} empty (${(body.stored ?? []).join(', ')})`,
+  );
 }
 
 async function runOnce(): Promise<void> {
