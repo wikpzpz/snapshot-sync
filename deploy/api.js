@@ -83,6 +83,9 @@ async function writeSnapshot(env, kind, data) {
  * worth caching: it is either not published yet or the page was blocked, so treat
  * it as missing and let the next run try again.
  */
+/** A bo3 with an unannounced veto still prints three "TBA" map slots. */
+const realMaps = (detail) => (detail?.maps ?? []).filter((map) => map?.name && !/^tba?$/i.test(map.name));
+
 /** "team1"/"team2" are placeholders while a fixture is TBD, not names. */
 const realTeamName = (team) => (team?.name && !/^team[12]$/i.test(team.name) ? team.name : null);
 
@@ -92,7 +95,7 @@ const hasDetailContent = (detail) =>
       ((detail.veto?.steps?.length ?? 0) > 0 ||
         (detail.lineups?.length ?? 0) > 0 ||
         (detail.stats?.length ?? 0) > 0 ||
-        (detail.maps?.length ?? 0) > 0 ||
+        realMaps(detail).length > 0 ||
         realTeamName(detail.team1) ||
         realTeamName(detail.team2)),
   );

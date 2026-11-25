@@ -39,9 +39,10 @@ async function writeSnapshot(env, kind, data) {
     "INSERT INTO snapshots (kind, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(kind) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at"
   ).bind(kind, JSON.stringify(data), Date.now()).run();
 }
+var realMaps = (detail) => (detail?.maps ?? []).filter((map) => map?.name && !/^tba?$/i.test(map.name));
 var realTeamName = (team) => team?.name && !/^team[12]$/i.test(team.name) ? team.name : null;
 var hasDetailContent = (detail) => Boolean(
-  detail && ((detail.veto?.steps?.length ?? 0) > 0 || (detail.lineups?.length ?? 0) > 0 || (detail.stats?.length ?? 0) > 0 || (detail.maps?.length ?? 0) > 0 || realTeamName(detail.team1) || realTeamName(detail.team2))
+  detail && ((detail.veto?.steps?.length ?? 0) > 0 || (detail.lineups?.length ?? 0) > 0 || (detail.stats?.length ?? 0) > 0 || realMaps(detail).length > 0 || realTeamName(detail.team1) || realTeamName(detail.team2))
 );
 async function readDetail(env, id) {
   await ensureSchema(env);

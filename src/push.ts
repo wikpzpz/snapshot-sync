@@ -57,6 +57,11 @@ async function detailIds(matches: MatchCard[]): Promise<number[]> {
  * storing (the match is not published yet, or the source blanked the page), so it
  * is reported as skipped and tried again on a later run.
  */
+/** A bo3 with an unannounced veto still lists three "TBA" map slots. */
+function realMaps(detail: MatchDetail): unknown[] {
+  return (detail.maps ?? []).filter((map) => map?.name && !/^tba?$/i.test(map.name));
+}
+
 function realTeamName(team: { name: string } | null): string | null {
   return team?.name && !/^team[12]$/i.test(team.name) ? team.name : null;
 }
@@ -67,7 +72,7 @@ function hasDetailContent(detail: MatchDetail): boolean {
       (detail.veto?.steps.length ||
         detail.lineups.length ||
         detail.stats.length ||
-        detail.maps.length ||
+        realMaps(detail).length ||
         realTeamName(detail.team1) ||
         realTeamName(detail.team2)),
   );
