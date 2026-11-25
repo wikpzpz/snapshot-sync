@@ -102,11 +102,27 @@ export interface PlayerStat {
   kast: number | null;
   /** Round rating, e.g. 1.22. */
   rating: number | null;
+  /** Assists, when the per-map stats page could be read. */
+  assists: number | null;
+  /** Assists that came off a flash. */
+  flashAssists: number | null;
+  /** Headshot kills, and their share of `kills` (0-100). */
+  headshots: number | null;
+  headshotPct: number | null;
 }
 
 export interface TeamStats {
   team: TeamRef;
   players: PlayerStat[];
+}
+
+/** One map's stats table, from its tab in the match page's stats box. */
+export interface MapStats {
+  /** Map name as printed, e.g. "Anubis". */
+  name: string;
+  /** Source map-stats page id, used to fetch assists and headshots. */
+  mapStatsId: number | null;
+  teams: TeamStats[];
 }
 
 export interface MatchVeto {
@@ -140,6 +156,10 @@ export interface MatchDetail {
   lineups: TeamLineup[];
   /** The match stats table, one entry per team. */
   stats: TeamStats[];
+  /** The same tables per map, in map order. */
+  mapStats: MapStats[];
+  /** True while the match has not started, so `lineups` is the expected lineup. */
+  expected: boolean;
 }
 
 export interface EventSummary {

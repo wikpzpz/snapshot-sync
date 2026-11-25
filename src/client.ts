@@ -84,6 +84,15 @@ export class FeedClient {
   }
 
   /**
+   * The source's per-map stats page: the only page that prints assists and
+   * headshot kills. It is bot-checked harder than match pages.
+   * https://www.the source site/stats/matches/mapstatsid/{id}/{slug}
+   */
+  async getMapStatsPage(mapStatsId: number, slug = 'x'): Promise<string> {
+    return this.http.getHtml(`/stats/matches/mapstatsid/${mapStatsId}/${slug}`);
+  }
+
+  /**
    * The two teams of a match with their region/country.
    * https://www.the source site/matches/{id}/{slug} — the only cheap source of team country.
    */

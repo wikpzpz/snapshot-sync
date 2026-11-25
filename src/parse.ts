@@ -9,6 +9,7 @@ import type {
   EventSummary,
   LineupPlayer,
   MapScore,
+  MapStats,
   MatchCard,
   MatchDetail,
   MatchResult,
@@ -420,19 +421,25 @@ function parseLineups($: Doc): TeamLineup[] {
     if (!name) return;
 
     const players: LineupPlayer[] = [];
-    node.find('td.player-image a[href*="/player/"]').each((__, cell) => {
-      const link = $(cell);
-      const img = link.find('img').first();
+    // A finished match links each player; an upcoming one lists the same five
+    // without a player link, so the id comes from the compare cell instead.
+    node.find('td.player-image').each((__, cell) => {
+      const box = $(cell);
+      const link = box.find('a[href*="/player/"]').first();
+      const compare = box.find('[data-player-id]').first();
+      const img = box.find('img').first();
       // The photo title is "Daniel 'tuxa' Esteves".
       const alt = clean(img.attr('title')) ?? clean(img.attr('alt')) ?? '';
       const quoted = alt.match(/'([^']+)'/);
+      const nick = quoted?.[1] ?? clean(link.text()) ?? playerSlugOf(link.attr('href'));
+      if (!nick) return;
       players.push({
-        id: playerIdOf(link.attr('href')),
-        nick: quoted?.[1] ?? playerSlugOf(link.attr('href')) ?? 'unknown',
+        id: playerIdOf(link.attr('href')) ?? toInt(compare.attr('data-player-id') ?? null),
+        nick,
         name: quoted ? clean(alt.replace(/'[^']+'/, '')) : null,
         photo: imgUrl(img.attr('src')),
         country: null,
-        role: clean(link.find('.role-pill').first().attr('title')),
+        role: clean(box.find('.role-pill').first().attr('title')),
       });
     });
 
@@ -455,10 +462,10 @@ function parseLineups($: Doc): TeamLineup[] {
  * its players (K-D, round swing, ADR, KAST, rating). The eco-adjusted and
  * side-split copies are hidden and skipped through their class names.
  */
-function parsePlayerStats($: Doc): TeamStats[] {
+function parseStatsTables($: Doc, scope: Cheerio<AnyNode>): TeamStats[] {
   // One table per team per map tab, and the first tab is "All maps", so the first
   // table seen for a team is the one to keep and later duplicates are skipped.
-  const tables = $('#match-stats table.totalstats');
+  const tables = scope.find('table.totalstats');
   if (!tables.length) return [];
 
   const teams: TeamStats[] = [];
@@ -511,10 +518,168 @@ function parsePlayerStats($: Doc): TeamStats[] {
       adr: numberOf(clean(row.find('td.adr.traditional-data').first().text())),
       kast: numberOf(clean(row.find('td.kast.traditional-data').first().text())),
       rating: numberOf(clean(row.find('td.rating').first().text())),
+      // Only the per-map stats pages print these, so they are filled in later.
+      assists: null,
+      flashAssists: null,
+      headshots: null,
+      headshotPct: null,
     });
   });
 
   return teams;
+}
+
+/** The "All maps" tab: every map of the series added together. */
+function parsePlayerStats($: Doc): TeamStats[] {
+  const all = $('#all-content').first();
+  return parseStatsTables($, all.length ? all : $('#match-stats'));
+}
+
+/**
+ * The same tables per map. Each tab is a `.stats-content` block whose id is the
+ * source map-stats page id ("245025-content"), and the tabs follow the map order
+ * of the mapholder, so `maps` lines up with them one to one.
+ */
+function parseMapStats($: Doc, maps: MapScore[]): MapStats[] {
+  const perMap: MapStats[] = [];
+  let index = 0;
+
+  $('#match-stats .stats-content').each((_, el) => {
+    const block = $(el);
+    const key = (block.attr('id') ?? '').replace(/-content$/, '');
+    if (!/^\d+$/.test(key)) return; // "all-content"
+    const map = maps[index];
+    index += 1;
+    const teams = parseStatsTables($, block);
+    if (!teams.length) return;
+    perMap.push({ name: map?.name ?? `map ${index}`, mapStatsId: Number(key), teams });
+  });
+
+  return perMap;
+}
+
+/** One row of the source's per-map stats page. */
+export interface DetailedPlayerRow {
+  playerId: number | null;
+  nick: string;
+  kills: number | null;
+  headshots: number | null;
+  assists: number | null;
+  flashAssists: number | null;
+  deaths: number | null;
+}
+
+const nameKey = (value: string | null | undefined): string =>
+  (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** Kills and deaths print as "14 (8)": the value plus a bracketed detail. */
+function pairOf(text: string | null): { value: number | null; detail: number | null } {
+  const detail = text?.match(/\((\d+)\)/)?.[1];
+  return { value: numberOf(text), detail: detail == null ? null : Number(detail) };
+}
+
+/**
+ * The source's per-map stats page (/stats/matches/mapstatsid/{id}): the only place
+ * that prints assists and headshot kills. It is bot-checked harder than match
+ * pages, so callers treat a failure as "no assists for this map".
+ */
+export function parseStatsPage(html: string): { team: string | null; players: DetailedPlayerRow[] }[] {
+  const $ = load(html);
+  const teams: { team: string | null; players: DetailedPlayerRow[] }[] = [];
+
+  $('table.stats-table').each((_, el) => {
+    const table = $(el);
+    const team = clean(table.find('th.st-teamname').first().text());
+    const players: DetailedPlayerRow[] = [];
+
+    table.find('tbody tr').each((__, row) => {
+      const cells = $(row);
+      const anchor = cells.find('td.st-player a[href*="/stats/players/"]').first();
+      if (!anchor.length) return;
+      const kills = pairOf(clean(cells.find('td.st-kills.traditional-data').first().text()));
+      const assists = pairOf(clean(cells.find('td.st-assists').first().text()));
+      const deaths = pairOf(clean(cells.find('td.st-deaths.traditional-data').first().text()));
+      players.push({
+        playerId: toInt(pathOf(anchor.attr('href')).match(/^\/stats\/players\/(\d+)\//)?.[1] ?? null),
+        nick: clean(anchor.text()) ?? 'unknown',
+        kills: kills.value,
+        headshots: kills.detail,
+        assists: assists.value,
+        flashAssists: assists.detail,
+        deaths: deaths.value,
+      });
+    });
+
+    if (players.length) teams.push({ team, players });
+  });
+
+  return teams;
+}
+
+const headshotShare = (headshots: number | null, kills: number | null): number | null =>
+  headshots != null && kills ? Math.round((headshots / kills) * 1000) / 10 : null;
+
+/** Copy assists, flash assists and headshot kills onto one map's player rows. */
+export function applyDetailedStats(
+  map: MapStats,
+  teams: { team: string | null; players: DetailedPlayerRow[] }[],
+): number {
+  const byId = new Map<number, DetailedPlayerRow>();
+  for (const team of teams) for (const row of team.players) if (row.playerId != null) byId.set(row.playerId, row);
+
+  let updated = 0;
+  for (const team of map.teams) {
+    const byName = teams.find((entry) => nameKey(entry.team) === nameKey(team.team.name));
+    for (const player of team.players) {
+      const row =
+        (player.playerId != null ? byId.get(player.playerId) : undefined) ??
+        byName?.players.find((entry) => entry.nick === player.nick);
+      if (!row) continue;
+      player.kills = player.kills ?? row.kills;
+      player.assists = row.assists;
+      player.flashAssists = row.flashAssists;
+      player.headshots = row.headshots;
+      player.headshotPct = headshotShare(row.headshots, player.kills ?? row.kills);
+      updated += 1;
+    }
+  }
+  return updated;
+}
+
+/** Assists and headshot kills summed over the maps, for the "All maps" table. */
+export function applySeriesTotals(detail: MatchDetail): number {
+  let updated = 0;
+
+  for (const team of detail.stats) {
+    for (const player of team.players) {
+      if (player.assists != null) continue;
+      let assists = 0;
+      let flashAssists = 0;
+      let headshots = 0;
+      let kills = 0;
+      for (const map of detail.mapStats) {
+        const row = map.teams
+          .flatMap((entry) => entry.players)
+          .find(
+            (entry) =>
+              (entry.playerId != null && entry.playerId === player.playerId) || entry.nick === player.nick,
+          );
+        if (!row || row.assists == null) continue;
+        assists += row.assists;
+        flashAssists += row.flashAssists ?? 0;
+        headshots += row.headshots ?? 0;
+        kills += row.kills ?? 0;
+      }
+      if (!assists && !headshots) continue;
+      player.assists = assists;
+      player.flashAssists = flashAssists;
+      player.headshots = headshots;
+      player.headshotPct = headshotShare(headshots, kills || player.kills);
+      updated += 1;
+    }
+  }
+
+  return updated;
 }
 
 /** The header prints "team2" while a fixture is TBD, which is not a real name. */
@@ -549,6 +714,9 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
   const maps: MapScore[] = [];
   $('.mapholder').each((_, el) => {
     const map = $(el);
+    // An unstarted match shows a simulated veto with win chances per map
+    // ("Ancient - 75%"); those are not the maps of this match.
+    if (map.hasClass('simulated-map')) return;
     const name = clean(map.find('.mapname').first().text());
     if (!name) return;
     const left = map.find('.results-left, .results-left.won, .results-left.lost').first();
@@ -569,6 +737,7 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
   const veto = parseVeto($);
   const lineups = parseLineups($);
   const stats = parsePlayerStats($);
+  const mapStats = parseMapStats($, maps);
 
   // The lineup box has no flag; the stats row for the same player does.
   const countryOf = new Map<number, string | null>();
@@ -591,6 +760,13 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
     toInt($('.date[data-unix]').first().attr('data-unix')) ??
     unixAt($, $('.match-page').length ? $('.match-page') : $('body'));
 
+  // Upcoming fixtures print the same lineup box while the match has no stats and
+  // no map scores: those five are the expected lineup, not one that played.
+  const expected =
+    lineups.length > 0 &&
+    stats.length === 0 &&
+    maps.every((map) => map.team1 == null && map.team2 == null);
+
   return {
     id,
     url,
@@ -604,6 +780,8 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
     veto,
     lineups,
     stats,
+    mapStats,
+    expected,
   };
 }
 
