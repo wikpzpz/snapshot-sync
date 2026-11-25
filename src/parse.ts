@@ -7,11 +7,16 @@ import type {
   EventDetail,
   EventRef,
   EventSummary,
+  LineupPlayer,
   MapScore,
   MatchCard,
   MatchDetail,
   MatchResult,
+  MatchVeto,
+  TeamLineup,
   TeamRef,
+  TeamStats,
+  VetoStep,
 } from './types.ts';
 
 const MATCH_HREF = /^\/matches\/(\d+)\//;
@@ -347,6 +352,171 @@ function headerTeam($: Doc, which: 1 | 2, hasTeamNames: boolean): (TeamRef & { s
 }
 
 /** https://www.the source site/matches/{id}/{slug} */
+/** Player id from "/player/23482/tuxa". */
+const playerIdOf = (href: string | undefined | null): number | null => {
+  const parts = pathOf(href).split('/');
+  return parts[1] === 'player' ? toInt(parts[2]) : null;
+};
+
+/** Player slug from "/player/23482/tuxa". */
+const playerSlugOf = (href: string | undefined | null): string | null => {
+  const parts = pathOf(href).split('/');
+  return parts[1] === 'player' ? (clean(parts[3]) ?? null) : null;
+};
+
+/** "53-53" -> kills/deaths. */
+function kdOf(text: string | null): { kills: number | null; deaths: number | null } {
+  const match = (text ?? '').match(/(\d+)\s*-\s*(\d+)/);
+  return match ? { kills: Number(match[1]), deaths: Number(match[2]) } : { kills: null, deaths: null };
+}
+
+/** First number in a cell that may carry a unit ("66.2%", "+3.47%"). */
+function numberOf(text: string | null): number | null {
+  const match = (text ?? '').match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+/**
+ * The veto box prints one line per action ("3. SAW Youngsters picked Anubis",
+ * "7. Dust2 was left over"); the box above it carries the format.
+ */
+function parseVeto($: Doc): MatchVeto | null {
+  const box = $('.veto-box.real-veto-only').first();
+  const text = clean($('.veto-box:not(.real-veto-only) .padding').first().text());
+  const steps: VetoStep[] = [];
+
+  if (box.length) {
+    box.find('.padding div').each((_, el) => {
+      const line = clean($(el).text());
+      if (!line) return;
+      const action = line.match(/^(\d+)\.\s+(.+?)\s+(picked|removed)\s+(.+)$/i);
+      const leftOver = line.match(/^(\d+)\.\s+(.+?)\s+was left over$/i);
+      if (action) {
+        steps.push({
+          order: Number(action[1]),
+          team: action[2],
+          action: action[3].toLowerCase() === 'picked' ? 'picked' : 'removed',
+          map: action[4],
+        });
+      } else if (leftOver) {
+        steps.push({ order: Number(leftOver[1]), team: null, action: 'left over', map: leftOver[2] });
+      }
+    });
+  }
+
+  if (!text && steps.length === 0) return null;
+  return { text, steps };
+}
+
+/** The two lineup boxes: player photos, nicks, roles, team ranking. */
+function parseLineups($: Doc): TeamLineup[] {
+  const lineups: TeamLineup[] = [];
+
+  $('.lineups .lineup').each((_, el) => {
+    const node = $(el);
+    const headline = node.find('.box-headline').first();
+    const anchor = headline.find('a[href*="/team/"]').first();
+    const name = clean(anchor.text()) ?? clean(headline.find('img').first().attr('title'));
+    if (!name) return;
+
+    const players: LineupPlayer[] = [];
+    node.find('td.player-image a[href*="/player/"]').each((__, cell) => {
+      const link = $(cell);
+      const img = link.find('img').first();
+      // The photo title is "Daniel 'tuxa' Esteves".
+      const alt = clean(img.attr('title')) ?? clean(img.attr('alt')) ?? '';
+      const quoted = alt.match(/'([^']+)'/);
+      players.push({
+        id: playerIdOf(link.attr('href')),
+        nick: quoted?.[1] ?? playerSlugOf(link.attr('href')) ?? 'unknown',
+        name: quoted ? clean(alt.replace(/'[^']+'/, '')) : null,
+        photo: imgUrl(img.attr('src')),
+        country: null,
+        role: clean(link.find('.role-pill').first().attr('title')),
+      });
+    });
+
+    lineups.push({
+      team: {
+        id: toInt(pathOf(anchor.attr('href')).match(TEAM_HREF)?.[1] ?? null),
+        name,
+        logo: imgUrl(headline.find('img.day-only').first().attr('src') ?? headline.find('img').first().attr('src')),
+      },
+      ranking: clean(headline.find('.hltv-ranking').first().text())?.replace(/^HLTV:\s*/i, '') ?? null,
+      players,
+    });
+  });
+
+  return lineups;
+}
+
+/**
+ * The "Match stats" table: a header row names each team, the rows under it are
+ * its players (K-D, round swing, ADR, KAST, rating). The eco-adjusted and
+ * side-split copies are hidden and skipped through their class names.
+ */
+function parsePlayerStats($: Doc): TeamStats[] {
+  // One table per team per map tab, and the first tab is "All maps", so the first
+  // table seen for a team is the one to keep and later duplicates are skipped.
+  const tables = $('#match-stats table.totalstats');
+  if (!tables.length) return [];
+
+  const teams: TeamStats[] = [];
+  let current: TeamStats | null = null;
+
+  tables.find('tr').each((_, el) => {
+    const row = $(el);
+    const playersCell = row.find('td.players').first();
+
+    if (row.hasClass('header-row')) {
+      const anchor = playersCell.find('a[href*="/team/"]').first();
+      const name = clean(anchor.text()) ?? clean(playersCell.find('img').first().attr('title'));
+      if (!name || teams.some((team) => team.team.name === name)) {
+        current = null;
+        return;
+      }
+      current = {
+        team: {
+          id: toInt(pathOf(anchor.attr('href')).match(TEAM_HREF)?.[1] ?? null),
+          name,
+          logo: imgUrl(
+            playersCell.find('img.day-only').first().attr('src') ?? playersCell.find('img').first().attr('src'),
+          ),
+        },
+        players: [],
+      };
+      teams.push(current);
+      return;
+    }
+
+    if (!current) return;
+    const anchor = playersCell.find('a[href*="/player/"]').first();
+    if (!anchor.length) return;
+
+    const { kills, deaths } = kdOf(clean(row.find('td.kd.traditional-data').first().text()));
+    const flag = playersCell.find('img.flag').first();
+
+    current.players.push({
+      playerId: playerIdOf(anchor.attr('href')),
+      nick:
+        clean(playersCell.find('.player-nick').first().text()) ??
+        clean(anchor.text()) ??
+        playerSlugOf(anchor.attr('href')) ??
+        'unknown',
+      country: clean(flag.attr('alt')) ?? clean(flag.attr('title')),
+      kills,
+      deaths,
+      kdDiff: kills != null && deaths != null ? kills - deaths : null,
+      swing: clean(row.find('td.roundSwing').first().text()),
+      adr: numberOf(clean(row.find('td.adr.traditional-data').first().text())),
+      kast: numberOf(clean(row.find('td.kast.traditional-data').first().text())),
+      rating: numberOf(clean(row.find('td.rating').first().text())),
+    });
+  });
+
+  return teams;
+}
+
 export function parseMatchDetail(html: string, id: number, url: string): MatchDetail {
   const $ = load(html);
 
@@ -392,6 +562,26 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
     });
   });
 
+  const veto = parseVeto($);
+  const lineups = parseLineups($);
+  const stats = parsePlayerStats($);
+
+  // The lineup box has no flag; the stats row for the same player does.
+  const countryOf = new Map<number, string | null>();
+  for (const team of stats) {
+    for (const player of team.players) {
+      if (player.playerId != null) countryOf.set(player.playerId, player.country);
+    }
+  }
+  for (const lineup of lineups) {
+    for (const player of lineup.players) {
+      if (player.id != null && countryOf.has(player.id)) player.country = countryOf.get(player.id) ?? null;
+    }
+  }
+
+  const formatMatch = (veto?.text ?? '').match(/best of\s*(\d)/i);
+  const format = formatMatch ? `bo${formatMatch[1]}` : null;
+
   const title = clean($('title').first().text())?.replace(/\s*\|\s*HLTV\.org\s*$/i, '') ?? null;
   const startsAt =
     toInt($('.date[data-unix]').first().attr('data-unix')) ??
@@ -406,6 +596,10 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
     team1,
     team2,
     maps,
+    format,
+    veto,
+    lineups,
+    stats,
   };
 }
 

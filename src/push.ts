@@ -13,6 +13,7 @@
 import { readFile } from 'node:fs/promises';
 import { FeedClient } from './client.ts';
 import { learnRankedTeams, loadDirectory, resolveDirectory } from './directory.ts';
+import type { MatchCard } from './types.ts';
 
 const SITE_URL = (process.env.SITE_URL ?? 'https://cs2api-461yz8-preview.freebuff.site').replace(/\/$/, '');
 
@@ -23,6 +24,59 @@ async function pushKey(): Promise<string> {
   } catch {
     throw new Error('No push key: set PUSH_KEY or create .secrets/push-key');
   }
+}
+
+/** How many match pages one run is allowed to open (each is ~500 KB). */
+const DETAIL_LIMIT = 25;
+
+/**
+ * Match pages to scrape: the ones a client asked the API for (the queue it fills
+ * on /api/match/:id) plus every live match, so a live scoreboard also has its
+ * veto and player stats.
+ */
+async function detailIds(matches: MatchCard[]): Promise<number[]> {
+  const live = matches.filter((match) => match.status === 'live').map((match) => match.id);
+
+  let queued: number[] = [];
+  try {
+    const res = await fetch(`${SITE_URL}/api/detail-queue?limit=${DETAIL_LIMIT}`, {
+      headers: { 'x-push-key': await pushKey() },
+    });
+    if (res.ok) queued = ((await res.json()) as { ids?: number[] }).ids ?? [];
+    else console.warn(`  detail queue: HTTP ${res.status}`);
+  } catch (error) {
+    console.warn(`  detail queue unavailable: ${String(error).slice(0, 80)}`);
+  }
+
+  return [...new Set([...queued, ...live])].slice(0, DETAIL_LIMIT);
+}
+
+/** Scrape the requested match pages and store them next to the snapshots. */
+async function pushDetails(client: FeedClient, matches: MatchCard[]): Promise<void> {
+  const ids = await detailIds(matches);
+  if (!ids.length) return;
+
+  const details = [];
+  for (const id of ids) {
+    try {
+      details.push(await client.getMatch(id));
+    } catch (error) {
+      console.warn(`  match ${id} details failed: ${String(error).slice(0, 80)}`);
+    }
+  }
+  if (!details.length) return;
+
+  const res = await fetch(`${SITE_URL}/api/push`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-push-key': await pushKey() },
+    body: JSON.stringify({ details }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { stored?: string[]; error?: string };
+  if (!res.ok) {
+    console.warn(`  detail push failed (HTTP ${res.status}): ${body.error ?? 'unknown error'}`);
+    return;
+  }
+  console.log(`  match details: ${details.length} pushed (${(body.stored ?? []).join(', ')})`);
 }
 
 async function runOnce(): Promise<void> {
@@ -80,6 +134,8 @@ async function runOnce(): Promise<void> {
     if (!res.ok) throw new Error(`push failed (HTTP ${res.status}): ${body.error ?? 'unknown error'}`);
 
     console.log(`Pushed to ${SITE_URL} in ${((Date.now() - started) / 1000).toFixed(1)}s: ${(body.stored ?? []).join(', ')}`);
+
+    await pushDetails(client, matches);
   } finally {
     await client.close();
   }

@@ -56,6 +56,65 @@ export interface MatchResult {
   starred: boolean;
 }
 
+/** One line of the veto box, e.g. "3. SAW Youngsters picked Anubis". */
+export interface VetoStep {
+  order: number;
+  /** Team name as printed, or null for "Dust2 was left over". */
+  team: string | null;
+  action: 'picked' | 'removed' | 'left over';
+  map: string;
+}
+
+/** A player in a team's lineup box, before any stats. */
+export interface LineupPlayer {
+  id: number | null;
+  /** In-game name, e.g. "tuxa". */
+  nick: string;
+  /** Real name when the player photo carries it, e.g. "Daniel Esteves". */
+  name: string | null;
+  photo: string | null;
+  /** Country from the flag next to the photo, e.g. "Portugal". */
+  country: string | null;
+  /** Role pill, e.g. "Main AWPer". */
+  role: string | null;
+}
+
+export interface TeamLineup {
+  team: TeamRef;
+  /** Source's ranking badge text, e.g. "#152". */
+  ranking: string | null;
+  players: LineupPlayer[];
+}
+
+/** One row of the match stats table (the "Both" view, all maps). */
+export interface PlayerStat {
+  playerId: number | null;
+  nick: string;
+  country: string | null;
+  kills: number | null;
+  deaths: number | null;
+  /** Kill/death difference. */
+  kdDiff: number | null;
+  /** Round swing, e.g. "+3.47%". */
+  swing: string | null;
+  adr: number | null;
+  /** Percent, e.g. 66.2. */
+  kast: number | null;
+  /** Round rating, e.g. 1.22. */
+  rating: number | null;
+}
+
+export interface TeamStats {
+  team: TeamRef;
+  players: PlayerStat[];
+}
+
+export interface MatchVeto {
+  /** Free-text description above the veto, e.g. "Best of 3 (Online)". */
+  text: string | null;
+  steps: VetoStep[];
+}
+
 export interface MapScore {
   name: string;
   team1: number | null;
@@ -74,6 +133,13 @@ export interface MatchDetail {
   team1: (TeamRef & { score: number | null; won: boolean }) | null;
   team2: (TeamRef & { score: number | null; won: boolean }) | null;
   maps: MapScore[];
+  /** "bo1" / "bo3" / "bo5", from the veto box description. */
+  format: string | null;
+  veto: MatchVeto | null;
+  /** The lineup boxes, in page order (team1 then team2). */
+  lineups: TeamLineup[];
+  /** The match stats table, one entry per team. */
+  stats: TeamStats[];
 }
 
 export interface EventSummary {

@@ -11,7 +11,8 @@ var NO_STORE = { ...HEADERS, "cache-control": "no-store" };
 function json(payload, status = 200) {
   return new Response(JSON.stringify(payload, null, 2), {
     status,
-    headers: status >= 400 ? NO_STORE : HEADERS
+    // 202 means "queued, try again": it must never be cached for a minute.
+    headers: status >= 400 || status === 202 ? NO_STORE : HEADERS
   });
 }
 var schemaReady = false;
@@ -20,6 +21,10 @@ async function ensureSchema(env) {
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS snapshots (kind TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)"
   ).run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS details (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)"
+  ).run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS detail_queue (id INTEGER PRIMARY KEY, requested_at INTEGER NOT NULL)").run();
   schemaReady = true;
 }
 async function readSnapshot(env, kind) {
@@ -33,6 +38,34 @@ async function writeSnapshot(env, kind, data) {
   await env.DB.prepare(
     "INSERT INTO snapshots (kind, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(kind) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at"
   ).bind(kind, JSON.stringify(data), Date.now()).run();
+}
+async function readDetail(env, id) {
+  await ensureSchema(env);
+  const row = await env.DB.prepare("SELECT payload, updated_at FROM details WHERE id = ?").bind(id).first();
+  if (!row) return null;
+  return { data: JSON.parse(row.payload), updatedAt: row.updated_at };
+}
+async function writeDetail(env, detail) {
+  await ensureSchema(env);
+  await env.DB.prepare(
+    "INSERT INTO details (id, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at"
+  ).bind(Number(detail.id), JSON.stringify(detail), Date.now()).run();
+}
+async function queueDetail(env, id) {
+  await ensureSchema(env);
+  await env.DB.prepare("INSERT OR REPLACE INTO detail_queue (id, requested_at) VALUES (?, ?)").bind(id, Date.now()).run();
+}
+async function queuedDetailIds(env, limit) {
+  await ensureSchema(env);
+  const { results } = await env.DB.prepare("SELECT id FROM detail_queue ORDER BY requested_at LIMIT ?").bind(limit).all();
+  return (results ?? []).map((row) => row.id);
+}
+async function clearQueued(env, ids) {
+  if (!ids.length) return;
+  await ensureSchema(env);
+  for (const id of ids) {
+    await env.DB.prepare("DELETE FROM detail_queue WHERE id = ?").bind(id).run();
+  }
 }
 var norm = (value) => String(value ?? "").toLowerCase().trim();
 var teamKey = (name) => norm(name).replace(/[^a-z0-9]/g, "");
@@ -210,7 +243,17 @@ async function handleApi(request, url, env) {
         stored.push(`${kind}:${body[kind].length}`);
       }
     }
-    if (!stored.length) return json({ error: "Nothing to store (send matches/events/results)." }, 400);
+    if (Array.isArray(body.details)) {
+      let storedDetails = 0;
+      for (const detail of body.details) {
+        if (!detail || !Number.isFinite(Number(detail.id))) continue;
+        await writeDetail(env, detail);
+        storedDetails += 1;
+      }
+      await clearQueued(env, body.details.map((detail) => Number(detail?.id)).filter((id) => Number.isFinite(id)));
+      if (storedDetails) stored.push(`details:${storedDetails}`);
+    }
+    if (!stored.length) return json({ error: "Nothing to store (send matches/events/results/details)." }, 400);
     return json({ ok: true, stored, at: Date.now() });
   }
   if (url.pathname === "/api/refresh") {
@@ -264,13 +307,43 @@ async function handleApi(request, url, env) {
       const snapshot = await readSnapshot(env, kind);
       out[kind] = snapshot ? { count: snapshot.data.length, updatedAt: new Date(snapshot.updatedAt).toISOString() } : null;
     }
-    return json({ snapshots: out, hint: "Run `npm run push` locally to refresh." });
+    const detailsRow = await env.DB.prepare("SELECT COUNT(*) AS n FROM details").first();
+    const queuedRow = await env.DB.prepare("SELECT COUNT(*) AS n FROM detail_queue").first();
+    return json({
+      snapshots: out,
+      details: { cached: detailsRow?.n ?? 0, queued: queuedRow?.n ?? 0 },
+      hint: "Run `npm run push` locally to refresh."
+    });
   }
   if (url.pathname === "/api/matches") {
     const [snapshot, directory] = await Promise.all([readSnapshot(env, "matches"), readSnapshot(env, "teams")]);
     if (!snapshot) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
     const index = teamIndex(directory?.data);
     return json(snapshot.data.map((match) => enrichMatch(match, index)));
+  }
+  const matchDetailsById = url.pathname.match(/^\/api\/match\/(\d+)\/details$/);
+  if (matchDetailsById) {
+    const id = Number(matchDetailsById[1]);
+    const detail = await readDetail(env, id);
+    if (!detail || url.searchParams.get("refresh") === "1") await queueDetail(env, id);
+    if (!detail) {
+      return json(
+        {
+          id,
+          details: null,
+          pending: true,
+          retryAfter: 60,
+          hint: "Queued: the next sync run (a few minutes) scrapes the match page and stores it."
+        },
+        202
+      );
+    }
+    return json({
+      id,
+      details: detail.data,
+      updatedAt: new Date(detail.updatedAt).toISOString(),
+      pending: url.searchParams.get("refresh") === "1"
+    });
   }
   const matchById = url.pathname.match(/^\/api\/match\/(\d+)$/);
   if (matchById) {
@@ -281,11 +354,28 @@ async function handleApi(request, url, env) {
       readSnapshot(env, "teams")
     ]);
     const index = teamIndex(directory?.data);
+    const detail = await readDetail(env, id);
+    if (!detail) await queueDetail(env, id);
+    const withDetails = (payload) => ({
+      ...payload,
+      details: detail?.data ?? null,
+      detailsUpdatedAt: detail ? new Date(detail.updatedAt).toISOString() : null,
+      detailsPending: !detail
+    });
     const card = (matches?.data ?? []).find((match) => match.id === id);
-    if (card) return json(enrichMatch(card, index));
+    if (card) return json(withDetails(enrichMatch(card, index)));
     const result = (results?.data ?? []).find((row) => row.id === id);
-    if (result) return json(enrichMatch(result, index));
-    return json({ error: `Match ${id} is not in the snapshot (it may have scrolled past the 241 cards / 100 results).` }, 404);
+    if (result) return json(withDetails(enrichMatch(result, index)));
+    return json(
+      { error: `Match ${id} is not in the snapshot (it may have scrolled past the 241 cards / 100 results).` },
+      404
+    );
+  }
+  if (url.pathname === "/api/detail-queue") {
+    const key = request.headers.get("x-push-key") ?? "";
+    if (!env.PUSH_KEY || key !== env.PUSH_KEY) return json({ error: "Unauthorized." }, 401);
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") ?? 20) || 20));
+    return json({ ids: await queuedDetailIds(env, limit), at: Date.now() });
   }
   if (url.pathname === "/api/events") {
     const snapshot = await readSnapshot(env, "events");

@@ -18,6 +18,9 @@
  *   GET  /api/team/:id?name=NAME   a team's upcoming matches + events
  *   GET  /api/country/:name        every upcoming match of that country's teams
  *   GET  /api/country/:name/results results row: finished matches, last `days` days
+ *   GET  /api/match/:id            one match, plus its cached page details when scraped
+ *   GET  /api/match/:id/details    veto, lineups and player stats (202 until scraped)
+ *   GET  /api/detail-queue         match ids the next sync run should scrape (push key)
  *   POST /api/push                 replace snapshots (header: x-push-key)
  *   POST /api/refresh?key=         start the snapshot job (header x-refresh-key)
  */
@@ -35,7 +38,8 @@ const NO_STORE = { ...HEADERS, 'cache-control': 'no-store' };
 function json(payload, status = 200) {
   return new Response(JSON.stringify(payload, null, 2), {
     status,
-    headers: status >= 400 ? NO_STORE : HEADERS,
+    // 202 means "queued, try again": it must never be cached for a minute.
+    headers: status >= 400 || status === 202 ? NO_STORE : HEADERS,
   });
 }
 
@@ -46,6 +50,12 @@ async function ensureSchema(env) {
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS snapshots (kind TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)',
   ).run();
+  // One row per match page, plus the queue of matches a client asked for and the
+  // sync run has not scraped yet.
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS details (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+  ).run();
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS detail_queue (id INTEGER PRIMARY KEY, requested_at INTEGER NOT NULL)').run();
   schemaReady = true;
 }
 
@@ -66,6 +76,48 @@ async function writeSnapshot(env, kind, data) {
   )
     .bind(kind, JSON.stringify(data), Date.now())
     .run();
+}
+
+/** A scraped match page (veto, lineups, player stats) by match id. */
+async function readDetail(env, id) {
+  await ensureSchema(env);
+  const row = await env.DB.prepare('SELECT payload, updated_at FROM details WHERE id = ?').bind(id).first();
+  if (!row) return null;
+  return { data: JSON.parse(row.payload), updatedAt: row.updated_at };
+}
+
+async function writeDetail(env, detail) {
+  await ensureSchema(env);
+  await env.DB.prepare(
+    'INSERT INTO details (id, payload, updated_at) VALUES (?, ?, ?) ' +
+      'ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at',
+  )
+    .bind(Number(detail.id), JSON.stringify(detail), Date.now())
+    .run();
+}
+
+/** Ask the next sync run to scrape this match page. */
+async function queueDetail(env, id) {
+  await ensureSchema(env);
+  await env.DB.prepare('INSERT OR REPLACE INTO detail_queue (id, requested_at) VALUES (?, ?)')
+    .bind(id, Date.now())
+    .run();
+}
+
+async function queuedDetailIds(env, limit) {
+  await ensureSchema(env);
+  const { results } = await env.DB.prepare('SELECT id FROM detail_queue ORDER BY requested_at LIMIT ?')
+    .bind(limit)
+    .all();
+  return (results ?? []).map((row) => row.id);
+}
+
+async function clearQueued(env, ids) {
+  if (!ids.length) return;
+  await ensureSchema(env);
+  for (const id of ids) {
+    await env.DB.prepare('DELETE FROM detail_queue WHERE id = ?').bind(id).run();
+  }
 }
 
 const norm = (value) => String(value ?? '').toLowerCase().trim();
@@ -298,7 +350,19 @@ async function handleApi(request, url, env) {
         stored.push(`${kind}:${body[kind].length}`);
       }
     }
-    if (!stored.length) return json({ error: 'Nothing to store (send matches/events/results).' }, 400);
+    // Match page details: one row per match, and the ids just stored leave the queue.
+    if (Array.isArray(body.details)) {
+      let storedDetails = 0;
+      for (const detail of body.details) {
+        if (!detail || !Number.isFinite(Number(detail.id))) continue;
+        await writeDetail(env, detail);
+        storedDetails += 1;
+      }
+      await clearQueued(env, body.details.map((detail) => Number(detail?.id)).filter((id) => Number.isFinite(id)));
+      if (storedDetails) stored.push(`details:${storedDetails}`);
+    }
+
+    if (!stored.length) return json({ error: 'Nothing to store (send matches/events/results/details).' }, 400);
     return json({ ok: true, stored, at: Date.now() });
   }
 
@@ -373,7 +437,13 @@ async function handleApi(request, url, env) {
         ? { count: snapshot.data.length, updatedAt: new Date(snapshot.updatedAt).toISOString() }
         : null;
     }
-    return json({ snapshots: out, hint: 'Run `npm run push` locally to refresh.' });
+    const detailsRow = await env.DB.prepare('SELECT COUNT(*) AS n FROM details').first();
+    const queuedRow = await env.DB.prepare('SELECT COUNT(*) AS n FROM detail_queue').first();
+    return json({
+      snapshots: out,
+      details: { cached: detailsRow?.n ?? 0, queued: queuedRow?.n ?? 0 },
+      hint: 'Run `npm run push` locally to refresh.',
+    });
   }
 
   if (url.pathname === '/api/matches') {
@@ -383,7 +453,35 @@ async function handleApi(request, url, env) {
     return json(snapshot.data.map((match) => enrichMatch(match, index)));
   }
 
-  // One match by id, from the matches snapshot or the results pages.
+  // Everything scraped from one match page. Unscraped matches are queued for the
+  // next sync run and answered with 202 so a client can come back.
+  const matchDetailsById = url.pathname.match(/^\/api\/match\/(\d+)\/details$/);
+  if (matchDetailsById) {
+    const id = Number(matchDetailsById[1]);
+    const detail = await readDetail(env, id);
+    if (!detail || url.searchParams.get('refresh') === '1') await queueDetail(env, id);
+    if (!detail) {
+      return json(
+        {
+          id,
+          details: null,
+          pending: true,
+          retryAfter: 60,
+          hint: 'Queued: the next sync run (a few minutes) scrapes the match page and stores it.',
+        },
+        202,
+      );
+    }
+    return json({
+      id,
+      details: detail.data,
+      updatedAt: new Date(detail.updatedAt).toISOString(),
+      pending: url.searchParams.get('refresh') === '1',
+    });
+  }
+
+  // One match by id, from the matches snapshot or the results pages, plus the
+  // cached match page details when they have been scraped.
   const matchById = url.pathname.match(/^\/api\/match\/(\d+)$/);
   if (matchById) {
     const id = Number(matchById[1]);
@@ -393,11 +491,32 @@ async function handleApi(request, url, env) {
       readSnapshot(env, 'teams'),
     ]);
     const index = teamIndex(directory?.data);
+    const detail = await readDetail(env, id);
+    if (!detail) await queueDetail(env, id);
+    const withDetails = (payload) => ({
+      ...payload,
+      details: detail?.data ?? null,
+      detailsUpdatedAt: detail ? new Date(detail.updatedAt).toISOString() : null,
+      detailsPending: !detail,
+    });
+
     const card = (matches?.data ?? []).find((match) => match.id === id);
-    if (card) return json(enrichMatch(card, index));
+    if (card) return json(withDetails(enrichMatch(card, index)));
     const result = (results?.data ?? []).find((row) => row.id === id);
-    if (result) return json(enrichMatch(result, index));
-    return json({ error: `Match ${id} is not in the snapshot (it may have scrolled past the 241 cards / 100 results).` }, 404);
+    if (result) return json(withDetails(enrichMatch(result, index)));
+    return json(
+      { error: `Match ${id} is not in the snapshot (it may have scrolled past the 241 cards / 100 results).` },
+      404,
+    );
+  }
+
+  // The sync run drains this queue, so details exist for matches nobody in the
+  // snapshot list points at. Guarded by the push key: it drives scraping work.
+  if (url.pathname === '/api/detail-queue') {
+    const key = request.headers.get('x-push-key') ?? '';
+    if (!env.PUSH_KEY || key !== env.PUSH_KEY) return json({ error: 'Unauthorized.' }, 401);
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit') ?? 20) || 20));
+    return json({ ids: await queuedDetailIds(env, limit), at: Date.now() });
   }
 
   if (url.pathname === '/api/events') {
