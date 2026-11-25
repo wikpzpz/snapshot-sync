@@ -32,10 +32,11 @@ const DETAIL_LIMIT = 25;
 
 /**
  * Per-map stats pages are only needed for assists and headshot kills; the match
- * page itself prints neither. One page per map, capped per run because the path
- * is bot-checked harder than match pages.
+ * page itself prints neither. The source answers that path with a Cloudflare
+ * challenge for this scraper, so a run probes a couple of them and stops at the
+ * first refusal instead of opening every map of every match.
  */
-const MAP_STATS_LIMIT = 40;
+const MAP_STATS_LIMIT = 12;
 
 /**
  * Match pages to scrape: the ones a client asked the API for (the queue it fills
@@ -108,10 +109,14 @@ async function pushDetails(client: FeedClient, matches: MatchCard[]): Promise<vo
           const rows = parseStatsPage(await client.getMapStatsPage(map.mapStatsId));
           if (applyDetailedStats(map, rows)) statsPages += 1;
         } catch (error) {
-          // A 403 is the source bot-checking this path for our IP: stop asking for
-          // the rest of the run instead of hammering it, and keep the stats we have.
-          statsBlocked = /403/.test(String(error));
-          if (statsBlocked) console.warn('  per-map stats pages: blocked, assists and HS% stay empty');
+          // The source bot-checks this path for the scraper: stop asking for the
+          // rest of the run instead of hammering it, and keep the stats we have.
+          statsBlocked = /Cloudflare rejected|403/.test(String(error));
+          console.warn(
+            statsBlocked
+              ? '  per-map stats pages: blocked by the source, assists and HS% stay empty'
+              : `  map ${map.name} stats failed: ${String(error).slice(0, 100)}`,
+          );
           break;
         }
       }
