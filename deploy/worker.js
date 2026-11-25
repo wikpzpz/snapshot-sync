@@ -25,6 +25,9 @@ async function ensureSchema(env) {
     "CREATE TABLE IF NOT EXISTS details (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)"
   ).run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS detail_queue (id INTEGER PRIMARY KEY, requested_at INTEGER NOT NULL)").run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS detail_skipped (id INTEGER PRIMARY KEY, skipped_at INTEGER NOT NULL)"
+  ).run();
   schemaReady = true;
 }
 async function readSnapshot(env, kind) {
@@ -67,6 +70,22 @@ async function queuedDetailIds(env, limit) {
   const { results } = await env.DB.prepare("SELECT id FROM detail_queue ORDER BY requested_at LIMIT ?").bind(limit).all();
   return (results ?? []).map((row) => row.id);
 }
+var SKIP_TTL_MS = 6 * 60 * 60 * 1e3;
+async function skippedDetailIds(env) {
+  await ensureSchema(env);
+  const { results } = await env.DB.prepare("SELECT id FROM detail_skipped WHERE skipped_at > ?").bind(Date.now() - SKIP_TTL_MS).all();
+  return new Set((results ?? []).map((row) => row.id));
+}
+async function markSkipped(env, ids) {
+  if (!ids.length) return;
+  await ensureSchema(env);
+  for (const id of ids) {
+    await env.DB.prepare(
+      "INSERT INTO detail_skipped (id, skipped_at) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET skipped_at = excluded.skipped_at"
+    ).bind(id, Date.now()).run();
+  }
+}
+var staleDetail = (detail) => Boolean(detail) && detail.data?.mapStats === void 0;
 async function clearQueued(env, ids) {
   if (!ids.length) return;
   await ensureSchema(env);
@@ -252,7 +271,8 @@ async function handleApi(request, url, env) {
     }
     if (Array.isArray(body.details) || Array.isArray(body.skipped)) {
       let storedDetails = 0;
-      const handled = (body.skipped ?? []).map(Number).filter((id) => Number.isFinite(id));
+      const skippedIds = (body.skipped ?? []).map(Number).filter((id) => Number.isFinite(id));
+      const handled = [...skippedIds];
       for (const detail of body.details ?? []) {
         const id = Number(detail?.id);
         if (!Number.isFinite(id) || !hasDetailContent(detail)) continue;
@@ -261,6 +281,7 @@ async function handleApi(request, url, env) {
         storedDetails += 1;
       }
       await clearQueued(env, handled);
+      await markSkipped(env, skippedIds);
       if (storedDetails) stored.push(`details:${storedDetails}`);
     }
     if (!stored.length) return json({ error: "Nothing to store (send matches/events/results/details)." }, 400);
@@ -335,7 +356,7 @@ async function handleApi(request, url, env) {
   if (matchDetailsById) {
     const id = Number(matchDetailsById[1]);
     const detail = await readDetail(env, id);
-    if (!detail || url.searchParams.get("refresh") === "1") await queueDetail(env, id);
+    if (!detail || staleDetail(detail) || url.searchParams.get("refresh") === "1") await queueDetail(env, id);
     if (!detail) {
       return json(
         {
@@ -365,7 +386,7 @@ async function handleApi(request, url, env) {
     ]);
     const index = teamIndex(directory?.data);
     const detail = await readDetail(env, id);
-    if (!detail) await queueDetail(env, id);
+    if (!detail || staleDetail(detail)) await queueDetail(env, id);
     const withDetails = (payload) => ({
       ...payload,
       details: detail?.data ?? null,
@@ -389,7 +410,12 @@ async function handleApi(request, url, env) {
       const [matches, results] = await Promise.all([readSnapshot(env, "matches"), readSnapshot(env, "results")]);
       const cached = new Set(((await env.DB.prepare("SELECT id FROM details").all()).results ?? []).map((row) => row.id));
       const pending = new Set(await queuedDetailIds(env, 100));
-      const candidates = [...matches?.data ?? [], ...results?.data ?? []].filter((row) => row?.id != null && !cached.has(row.id) && !pending.has(row.id)).sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0)).slice(0, limit);
+      const skipped = await skippedDetailIds(env);
+      const now = Date.now();
+      const realTeams = (row) => !!row?.team1?.name && !!row?.team2?.name && !/^team[12]$/i.test(row.team1.name) && !/^team[12]$/i.test(row.team2.name);
+      const candidates = [...matches?.data ?? [], ...results?.data ?? []].filter(
+        (row) => row?.id != null && !cached.has(row.id) && !pending.has(row.id) && !skipped.has(row.id) && realTeams(row)
+      ).sort((a, b) => Math.abs((a.startsAt ?? now) - now) - Math.abs((b.startsAt ?? now) - now)).slice(0, limit);
       for (const row of candidates) await queueDetail(env, row.id);
     }
     return json({ ids: await queuedDetailIds(env, limit), at: Date.now() });
