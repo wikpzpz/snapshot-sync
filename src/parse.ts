@@ -517,6 +517,10 @@ function parsePlayerStats($: Doc): TeamStats[] {
   return teams;
 }
 
+/** The header prints "team2" while a fixture is TBD, which is not a real name. */
+const namedTeam = <T extends { name: string }>(team: T | null): T | null =>
+  team && /^team[12]$/i.test(team.name) ? null : team;
+
 export function parseMatchDetail(html: string, id: number, url: string): MatchDetail {
   const $ = load(html);
 
@@ -526,8 +530,8 @@ export function parseMatchDetail(html: string, id: number, url: string): MatchDe
     if (teamId && !teamHrefs.includes(teamId)) teamHrefs.push(teamId);
   });
 
-  const team1 = headerTeam($, 1, true);
-  const team2 = headerTeam($, 2, true);
+  const team1 = namedTeam(headerTeam($, 1, true));
+  const team2 = namedTeam(headerTeam($, 2, true));
   if (team1 && teamHrefs[0]) team1.id = teamHrefs[0];
   if (team2 && teamHrefs[1]) team2.id = teamHrefs[1];
 

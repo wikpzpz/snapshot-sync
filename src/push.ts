@@ -57,6 +57,10 @@ async function detailIds(matches: MatchCard[]): Promise<number[]> {
  * storing (the match is not published yet, or the source blanked the page), so it
  * is reported as skipped and tried again on a later run.
  */
+function realTeamName(team: { name: string } | null): string | null {
+  return team?.name && !/^team[12]$/i.test(team.name) ? team.name : null;
+}
+
 function hasDetailContent(detail: MatchDetail): boolean {
   return Boolean(
     detail &&
@@ -64,8 +68,8 @@ function hasDetailContent(detail: MatchDetail): boolean {
         detail.lineups.length ||
         detail.stats.length ||
         detail.maps.length ||
-        detail.team1?.name ||
-        detail.team2?.name),
+        realTeamName(detail.team1) ||
+        realTeamName(detail.team2)),
   );
 }
 
