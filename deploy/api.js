@@ -21,6 +21,7 @@
  *   GET  /api/match/:id            one match, plus its cached page details when scraped
  *   GET  /api/match/:id/details    veto, lineups and player stats (202 until scraped)
  *   GET  /api/detail-queue         match ids the next sync run should scrape (push key)
+ *   GET  /api/event-queue          event ids whose page is missing or stale (push key)
  *   POST /api/push                 replace snapshots (header: x-push-key)
  *   POST /api/refresh?key=         start the snapshot job (header x-refresh-key)
  */
@@ -55,6 +56,10 @@ async function ensureSchema(env) {
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS details (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)',
   ).run();
+  // One row per event page: the location and the two dates its list card omits.
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS event_details (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)',
+  ).run();
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS detail_queue (id INTEGER PRIMARY KEY, requested_at INTEGER NOT NULL)').run();
   await env.DB.prepare(
     'CREATE TABLE IF NOT EXISTS detail_skipped (id INTEGER PRIMARY KEY, skipped_at INTEGER NOT NULL)',
@@ -79,6 +84,43 @@ async function writeSnapshot(env, kind, data) {
   )
     .bind(kind, JSON.stringify(data), Date.now())
     .run();
+}
+
+async function writeEventDetail(env, event) {
+  await ensureSchema(env);
+  await env.DB.prepare(
+    'INSERT INTO event_details (id, payload, updated_at) VALUES (?, ?, ?) ' +
+      'ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at',
+  )
+    .bind(Number(event.id), JSON.stringify(event), Date.now())
+    .run();
+}
+
+/** Cached event pages by id: location, prize pool and the two dates. */
+async function eventDetailsMap(env) {
+  await ensureSchema(env);
+  const { results } = await env.DB.prepare('SELECT id, payload FROM event_details').all();
+  const byId = new Map();
+  for (const row of results ?? []) {
+    try {
+      byId.set(row.id, { ...JSON.parse(row.payload), updatedAt: row.updated_at });
+    } catch {
+      // A torn row just means this event keeps the dates it already had.
+    }
+  }
+  return byId;
+}
+
+/** Stamp an event with the location and dates from its page, when cached. */
+function withEventInfo(event, info) {
+  const detail = event?.id != null ? info?.get(event.id) : null;
+  if (!detail) return event;
+  return {
+    ...event,
+    location: detail.location ?? event.location ?? null,
+    startsAt: detail.startsAt ?? event.startsAt ?? null,
+    endsAt: detail.endsAt ?? event.endsAt ?? null,
+  };
 }
 
 /**
@@ -252,7 +294,7 @@ function collectTeams(matches, events) {
 }
 
 /** Team view derived from the pushed matches/events — no team page needed. */
-function teamView(name, matches, events) {
+function teamView(name, matches, events, info = null) {
   const wanted = norm(name);
   const mine = (matches ?? []).filter(
     (match) => norm(match.team1?.name) === wanted || norm(match.team2?.name) === wanted,
@@ -287,6 +329,8 @@ function teamView(name, matches, events) {
     if (!key || !uniqueEvents.has(key)) continue;
     uniqueEvents.set(key, { ...uniqueEvents.get(key), startsAt: event.startsAt ?? null, endsAt: event.endsAt ?? null });
   }
+  // The event page itself knows the location and both dates.
+  for (const [key, event] of uniqueEvents) uniqueEvents.set(key, withEventInfo(event, info));
 
   // The snapshot has no team page, but match cards carry real team ids.
   let teamId = null;
@@ -359,7 +403,7 @@ function countryResults(country, results, teams, days) {
 }
 
 /** Matches of every team that `country` claims, plus the events they belong to. */
-function countryView(country, matches, teams, results, days = 3) {
+function countryView(country, matches, teams, results, days = 3, info = null) {
   const wanted = norm(country);
   const index = teamIndex(teams);
   const countryOf = (name) => (name ? norm(homeCountry(index.get(teamKey(name)))) : '');
@@ -387,6 +431,7 @@ function countryView(country, matches, teams, results, days = 3) {
     });
     events.get(key).matches += 1;
   }
+  for (const [key, event] of events) events.set(key, withEventInfo(event, info));
 
   return {
     team: {
@@ -437,6 +482,17 @@ async function handleApi(request, url, env) {
       await clearQueued(env, handled);
       await markSkipped(env, skippedIds);
       if (storedDetails) stored.push(`details:${storedDetails}`);
+    }
+
+    // Event pages: the location and the two dates the event cards do not carry.
+    if (Array.isArray(body.eventDetails)) {
+      let storedEvents = 0;
+      for (const event of body.eventDetails) {
+        if (!event?.id) continue;
+        await writeEventDetail(env, event);
+        storedEvents += 1;
+      }
+      if (storedEvents) stored.push(`eventDetails:${storedEvents}`);
     }
 
     if (!stored.length) return json({ error: 'Nothing to store (send matches/events/results/details).' }, 400);
@@ -629,10 +685,28 @@ async function handleApi(request, url, env) {
     return json({ ids: await queuedDetailIds(env, limit), at: Date.now() });
   }
 
+  // Event pages carry the location and the two dates; a run refreshes the ones it
+  // has never seen, then the oldest, so they spread over a few runs.
+  if (url.pathname === '/api/event-queue') {
+    const key = request.headers.get('x-push-key') ?? '';
+    if (!env.PUSH_KEY || key !== env.PUSH_KEY) return json({ error: 'Unauthorized.' }, 401);
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit') ?? 20) || 20));
+    const [snapshot, cached] = await Promise.all([readSnapshot(env, 'events'), eventDetailsMap(env)]);
+    const ttl = 12 * HOUR_MS;
+    const age = (id) => (cached.has(id) ? Date.now() - (cached.get(id).updatedAt ?? 0) : -1);
+    const ids = (snapshot?.data ?? [])
+      .map((event) => event?.id)
+      .filter((id) => id != null)
+      .filter((id) => age(id) < 0 || age(id) > ttl)
+      .sort((a, b) => age(a) - age(b))
+      .slice(0, limit);
+    return json({ ids, at: Date.now() });
+  }
+
   if (url.pathname === '/api/events') {
-    const snapshot = await readSnapshot(env, 'events');
+    const [snapshot, info] = await Promise.all([readSnapshot(env, 'events'), eventDetailsMap(env)]);
     if (!snapshot) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
-    return json(snapshot.data);
+    return json(snapshot.data.map((event) => withEventInfo(event, info)));
   }
 
   if (url.pathname === '/api/results') {
@@ -707,10 +781,11 @@ async function handleApi(request, url, env) {
   if (countryMatch) {
     const country = decodeURIComponent(countryMatch[1]).trim();
     if (!country) return json({ error: 'Name a country, e.g. /api/country/Sweden.' }, 400);
-    const [matches, directory, results] = await Promise.all([
+    const [matches, directory, results, info] = await Promise.all([
       readSnapshot(env, 'matches'),
       readSnapshot(env, 'teams'),
       readSnapshot(env, 'results'),
+      eventDetailsMap(env),
     ]);
     if (!matches) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
     if (!directory) {
@@ -718,7 +793,7 @@ async function handleApi(request, url, env) {
     }
     const days = resultDays(url.searchParams.get('days'));
     return json({
-      ...countryView(country, matches.data, directory.data, results?.data, days),
+      ...countryView(country, matches.data, directory.data, results?.data, days, info),
       updatedAt: new Date(matches.updatedAt).toISOString(),
     });
   }
@@ -727,14 +802,15 @@ async function handleApi(request, url, env) {
   if (teamMatch) {
     const name = url.searchParams.get('name');
     if (!name) return json({ error: 'This hosted API looks teams up by name: /api/team/0?name=FaZe.' }, 400);
-    const [matches, events, directory, results] = await Promise.all([
+    const [matches, events, directory, results, info] = await Promise.all([
       readSnapshot(env, 'matches'),
       readSnapshot(env, 'events'),
       readSnapshot(env, 'teams'),
       readSnapshot(env, 'results'),
+      eventDetailsMap(env),
     ]);
     if (!matches) return json({ error: 'No snapshot yet — run `npm run push` locally.' }, 503);
-    const view = teamView(name, matches.data, events?.data);
+    const view = teamView(name, matches.data, events?.data, info);
     const index = teamIndex(directory?.data);
     // The team profile itself gets the same country/flag/id as its matches.
     const entry = index.get(teamKey(view.team.name));

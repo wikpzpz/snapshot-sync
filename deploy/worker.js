@@ -24,6 +24,9 @@ async function ensureSchema(env) {
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS details (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)"
   ).run();
+  await env.DB.prepare(
+    "CREATE TABLE IF NOT EXISTS event_details (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, updated_at INTEGER NOT NULL)"
+  ).run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS detail_queue (id INTEGER PRIMARY KEY, requested_at INTEGER NOT NULL)").run();
   await env.DB.prepare(
     "CREATE TABLE IF NOT EXISTS detail_skipped (id INTEGER PRIMARY KEY, skipped_at INTEGER NOT NULL)"
@@ -41,6 +44,34 @@ async function writeSnapshot(env, kind, data) {
   await env.DB.prepare(
     "INSERT INTO snapshots (kind, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(kind) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at"
   ).bind(kind, JSON.stringify(data), Date.now()).run();
+}
+async function writeEventDetail(env, event) {
+  await ensureSchema(env);
+  await env.DB.prepare(
+    "INSERT INTO event_details (id, payload, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at"
+  ).bind(Number(event.id), JSON.stringify(event), Date.now()).run();
+}
+async function eventDetailsMap(env) {
+  await ensureSchema(env);
+  const { results } = await env.DB.prepare("SELECT id, payload FROM event_details").all();
+  const byId = /* @__PURE__ */ new Map();
+  for (const row of results ?? []) {
+    try {
+      byId.set(row.id, { ...JSON.parse(row.payload), updatedAt: row.updated_at });
+    } catch {
+    }
+  }
+  return byId;
+}
+function withEventInfo(event, info) {
+  const detail = event?.id != null ? info?.get(event.id) : null;
+  if (!detail) return event;
+  return {
+    ...event,
+    location: detail.location ?? event.location ?? null,
+    startsAt: detail.startsAt ?? event.startsAt ?? null,
+    endsAt: detail.endsAt ?? event.endsAt ?? null
+  };
 }
 var realMaps = (detail) => (detail?.maps ?? []).filter((map) => map?.name && !/^tba?$/i.test(map.name));
 var realTeamName = (team) => team?.name && !/^team[12]$/i.test(team.name) ? team.name : null;
@@ -143,7 +174,7 @@ function collectTeams(matches, events) {
   }
   return Array.from(names.values());
 }
-function teamView(name, matches, events) {
+function teamView(name, matches, events, info = null) {
   const wanted = norm(name);
   const mine = (matches ?? []).filter(
     (match) => norm(match.team1?.name) === wanted || norm(match.team2?.name) === wanted
@@ -171,6 +202,7 @@ function teamView(name, matches, events) {
     if (!key || !uniqueEvents.has(key)) continue;
     uniqueEvents.set(key, { ...uniqueEvents.get(key), startsAt: event.startsAt ?? null, endsAt: event.endsAt ?? null });
   }
+  for (const [key, event] of uniqueEvents) uniqueEvents.set(key, withEventInfo(event, info));
   let teamId = null;
   for (const match of mine) {
     if (norm(match.team1?.name) === wanted && match.team1?.id != null) {
@@ -225,7 +257,7 @@ function countryResults(country, results, teams, days) {
   const since = days > 0 ? Date.now() - days * 864e5 : 0;
   return (results ?? []).filter((row) => (row.startsAt ?? 0) >= since).filter((row) => memberKeys.has(teamKey(row.team1?.name)) || memberKeys.has(teamKey(row.team2?.name))).sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0)).map((row) => enrichMatch(row, index, country));
 }
-function countryView(country, matches, teams, results, days = 3) {
+function countryView(country, matches, teams, results, days = 3, info = null) {
   const wanted = norm(country);
   const index = teamIndex(teams);
   const countryOf = (name) => name ? norm(homeCountry(index.get(teamKey(name)))) : "";
@@ -247,6 +279,7 @@ function countryView(country, matches, teams, results, days = 3) {
     });
     events.get(key).matches += 1;
   }
+  for (const [key, event] of events) events.set(key, withEventInfo(event, info));
   return {
     team: {
       id: 0,
@@ -291,6 +324,15 @@ async function handleApi(request, url, env) {
       await clearQueued(env, handled);
       await markSkipped(env, skippedIds);
       if (storedDetails) stored.push(`details:${storedDetails}`);
+    }
+    if (Array.isArray(body.eventDetails)) {
+      let storedEvents = 0;
+      for (const event of body.eventDetails) {
+        if (!event?.id) continue;
+        await writeEventDetail(env, event);
+        storedEvents += 1;
+      }
+      if (storedEvents) stored.push(`eventDetails:${storedEvents}`);
     }
     if (!stored.length) return json({ error: "Nothing to store (send matches/events/results/details)." }, 400);
     return json({ ok: true, stored, at: Date.now() });
@@ -428,10 +470,20 @@ async function handleApi(request, url, env) {
     }
     return json({ ids: await queuedDetailIds(env, limit), at: Date.now() });
   }
+  if (url.pathname === "/api/event-queue") {
+    const key = request.headers.get("x-push-key") ?? "";
+    if (!env.PUSH_KEY || key !== env.PUSH_KEY) return json({ error: "Unauthorized." }, 401);
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get("limit") ?? 20) || 20));
+    const [snapshot, cached] = await Promise.all([readSnapshot(env, "events"), eventDetailsMap(env)]);
+    const ttl = 12 * HOUR_MS;
+    const age = (id) => cached.has(id) ? Date.now() - (cached.get(id).updatedAt ?? 0) : -1;
+    const ids = (snapshot?.data ?? []).map((event) => event?.id).filter((id) => id != null).filter((id) => age(id) < 0 || age(id) > ttl).sort((a, b) => age(a) - age(b)).slice(0, limit);
+    return json({ ids, at: Date.now() });
+  }
   if (url.pathname === "/api/events") {
-    const snapshot = await readSnapshot(env, "events");
+    const [snapshot, info] = await Promise.all([readSnapshot(env, "events"), eventDetailsMap(env)]);
     if (!snapshot) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
-    return json(snapshot.data);
+    return json(snapshot.data.map((event) => withEventInfo(event, info)));
   }
   if (url.pathname === "/api/results") {
     const [snapshot, directory] = await Promise.all([readSnapshot(env, "results"), readSnapshot(env, "teams")]);
@@ -494,10 +546,11 @@ async function handleApi(request, url, env) {
   if (countryMatch) {
     const country = decodeURIComponent(countryMatch[1]).trim();
     if (!country) return json({ error: "Name a country, e.g. /api/country/Sweden." }, 400);
-    const [matches, directory, results] = await Promise.all([
+    const [matches, directory, results, info] = await Promise.all([
       readSnapshot(env, "matches"),
       readSnapshot(env, "teams"),
-      readSnapshot(env, "results")
+      readSnapshot(env, "results"),
+      eventDetailsMap(env)
     ]);
     if (!matches) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
     if (!directory) {
@@ -505,7 +558,7 @@ async function handleApi(request, url, env) {
     }
     const days = resultDays(url.searchParams.get("days"));
     return json({
-      ...countryView(country, matches.data, directory.data, results?.data, days),
+      ...countryView(country, matches.data, directory.data, results?.data, days, info),
       updatedAt: new Date(matches.updatedAt).toISOString()
     });
   }
@@ -513,14 +566,15 @@ async function handleApi(request, url, env) {
   if (teamMatch) {
     const name = url.searchParams.get("name");
     if (!name) return json({ error: "This hosted API looks teams up by name: /api/team/0?name=FaZe." }, 400);
-    const [matches, events, directory, results] = await Promise.all([
+    const [matches, events, directory, results, info] = await Promise.all([
       readSnapshot(env, "matches"),
       readSnapshot(env, "events"),
       readSnapshot(env, "teams"),
-      readSnapshot(env, "results")
+      readSnapshot(env, "results"),
+      eventDetailsMap(env)
     ]);
     if (!matches) return json({ error: "No snapshot yet \u2014 run `npm run push` locally." }, 503);
-    const view = teamView(name, matches.data, events?.data);
+    const view = teamView(name, matches.data, events?.data, info);
     const index = teamIndex(directory?.data);
     const entry = index.get(teamKey(view.team.name));
     if (entry) {

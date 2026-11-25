@@ -26,6 +26,9 @@ async function pushKey(): Promise<string> {
   }
 }
 
+/** How many event pages one run refreshes (they carry location and both dates). */
+const EVENT_LIMIT = 20;
+
 /** How many match pages one run is allowed to open (each is ~500 KB). */
 const DETAIL_LIMIT = 25;
 
@@ -115,6 +118,45 @@ async function pushDetails(client: FeedClient, matches: MatchCard[]): Promise<vo
   );
 }
 
+/**
+ * Event pages hold the location and the two dates that the events list leaves
+ * out, so a country or team view can say where and when its fixtures are played.
+ * The queue hands back the ones never scraped first, then the oldest.
+ */
+async function pushEventDetails(client: FeedClient): Promise<void> {
+  let ids: number[] = [];
+  try {
+    const res = await fetch(`${SITE_URL}/api/event-queue?limit=${EVENT_LIMIT}`, {
+      headers: { 'x-push-key': await pushKey() },
+    });
+    if (res.ok) ids = ((await res.json()) as { ids?: number[] }).ids ?? [];
+    else console.warn(`  event queue: HTTP ${res.status}`);
+  } catch (error) {
+    console.warn(`  event queue unavailable: ${String(error).slice(0, 80)}`);
+    return;
+  }
+  if (!ids.length) return;
+
+  const eventDetails = [];
+  for (const id of ids) {
+    try {
+      eventDetails.push(await client.getEvent(id));
+    } catch (error) {
+      console.warn(`  event ${id} page failed: ${String(error).slice(0, 80)}`);
+    }
+  }
+  if (!eventDetails.length) return;
+
+  const res = await fetch(`${SITE_URL}/api/push`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-push-key': await pushKey() },
+    body: JSON.stringify({ eventDetails }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) console.warn(`  event push failed (HTTP ${res.status}): ${body.error ?? 'unknown error'}`);
+  else console.log(`  event details: ${eventDetails.length} pushed`);
+}
+
 async function runOnce(): Promise<void> {
   const started = Date.now();
   // ~1 request/second: match pages get Cloudflare-challenged when requested faster.
@@ -122,7 +164,13 @@ async function runOnce(): Promise<void> {
   try {
     console.log(`Scraping with transport: ${client.http.transport}`);
 
-    const matches = await client.getMatches();
+    let matches = await client.getMatches();
+    if (!matches.length) {
+      // A challenged page parses to zero cards; one slow retry usually clears it.
+      console.warn('  matches page came back empty, retrying once in 20s');
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      matches = await client.getMatches();
+    }
     console.log(`  matches: ${matches.length}`);
 
     const { ongoing, upcoming } = await client.getEvents();
@@ -160,6 +208,12 @@ async function runOnce(): Promise<void> {
     console.log(`  teams: ${teams.length} known (${fetched} new)`);
     if (missing.length) console.log(`  ! no country yet for ${missing.length} teams (they fill in on later pushes)`);
 
+    // An empty page is a blocked scrape, not an empty world: pushing it would blank
+    // every country and team view until a later run succeeds.
+    if (!matches.length || !results.length || ongoing.length + upcoming.length === 0) {
+      throw new Error('the source returned an empty page (challenged?); keeping the previous snapshot');
+    }
+
     const res = await fetch(`${SITE_URL}/api/push`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-push-key': await pushKey() },
@@ -172,6 +226,7 @@ async function runOnce(): Promise<void> {
     console.log(`Pushed to ${SITE_URL} in ${((Date.now() - started) / 1000).toFixed(1)}s: ${(body.stored ?? []).join(', ')}`);
 
     await pushDetails(client, matches);
+    await pushEventDetails(client);
   } finally {
     await client.close();
   }
