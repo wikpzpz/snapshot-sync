@@ -593,7 +593,9 @@ export function parseStatsPage(html: string): { team: string | null; players: De
   const $ = load(html);
   const teams: { team: string | null; players: DetailedPlayerRow[] }[] = [];
 
-  $('table.stats-table').each((_, el) => {
+  // A map page prints three tables per team: the totals and the two half splits.
+  // Only `totalstats` is visible; ctstats/tstats are hidden halves of the same rows.
+  $('table.stats-table.totalstats').each((_, el) => {
     const table = $(el);
     const team = clean(table.find('th.st-teamname').first().text());
     const players: DetailedPlayerRow[] = [];

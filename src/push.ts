@@ -13,7 +13,6 @@
 import { readFile } from 'node:fs/promises';
 import { FeedClient } from './client.ts';
 import { learnRankedTeams, loadDirectory, resolveDirectory } from './directory.ts';
-import { applyDetailedStats, applySeriesTotals, parseStatsPage } from './parse.ts';
 import type { MatchCard, MatchDetail } from './types.ts';
 
 const SITE_URL = (process.env.SITE_URL ?? 'https://cs2api-461yz8-preview.freebuff.site').replace(/\/$/, '');
@@ -29,14 +28,6 @@ async function pushKey(): Promise<string> {
 
 /** How many match pages one run is allowed to open (each is ~500 KB). */
 const DETAIL_LIMIT = 25;
-
-/**
- * Per-map stats pages are only needed for assists and headshot kills; the match
- * page itself prints neither. The source answers that path with a Cloudflare
- * challenge for this scraper, so a run probes a couple of them and stops at the
- * first refusal instead of opening every map of every match.
- */
-const MAP_STATS_LIMIT = 12;
 
 /**
  * Match pages to scrape: the ones a client asked the API for (the queue it fills
@@ -97,33 +88,9 @@ async function pushDetails(client: FeedClient, matches: MatchCard[]): Promise<vo
 
   const details: MatchDetail[] = [];
   const skipped: number[] = [];
-  let statsBudget = MAP_STATS_LIMIT;
-  let statsPages = 0;
-  let statsBlocked = false;
-
   for (const id of ids) {
     try {
       const detail = await client.getMatch(id);
-      for (const map of detail.mapStats ?? []) {
-        if (statsBlocked || statsBudget <= 0) break;
-        if (!map.mapStatsId || !map.teams.length) continue;
-        statsBudget -= 1;
-        try {
-          const rows = parseStatsPage(await client.getMapStatsPage(map.mapStatsId));
-          if (applyDetailedStats(map, rows)) statsPages += 1;
-        } catch (error) {
-          // The source bot-checks this path for the scraper: stop asking for the
-          // rest of the run instead of hammering it, and keep the stats we have.
-          statsBlocked = /Cloudflare rejected|403/.test(String(error));
-          console.warn(
-            statsBlocked
-              ? '  per-map stats pages: blocked by the source, assists and HS% stay empty'
-              : `  map ${map.name} stats failed: ${String(error).slice(0, 100)}`,
-          );
-          break;
-        }
-      }
-      applySeriesTotals(detail);
       if (hasDetailContent(detail)) details.push(detail);
       else skipped.push(id);
     } catch (error) {
@@ -143,9 +110,8 @@ async function pushDetails(client: FeedClient, matches: MatchCard[]): Promise<vo
     console.warn(`  detail push failed (HTTP ${res.status}): ${body.error ?? 'unknown error'}`);
     return;
   }
-  const extras = statsPages ? `, ${statsPages} with assists/HS%` : '';
   console.log(
-    `  match details: ${details.length} pushed, ${skipped.length} empty${extras} (${(body.stored ?? []).join(', ')})`,
+    `  match details: ${details.length} pushed, ${skipped.length} empty (${(body.stored ?? []).join(', ')})`,
   );
 }
 
