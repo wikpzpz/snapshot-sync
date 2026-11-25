@@ -164,8 +164,24 @@ async function markSkipped(env, ids) {
   }
 }
 
-/** Details scraped before per-map stats existed have no `mapStats` key yet. */
-const staleDetail = (detail) => Boolean(detail) && detail.data?.mapStats === undefined;
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Details scraped before per-map stats existed have no `mapStats` key yet. A page
+ * cached before its match started holds only the "Veto simulation" box and the TBA
+ * map slots, so once the match is under way it is stale too: it has to be scraped
+ * again to get the real veto, the map scores and the per-map stats.
+ */
+const staleDetail = (detail) => {
+  if (!detail) return false;
+  const data = detail.data ?? {};
+  if (data.mapStats === undefined) return true;
+  if (data.stats?.length || data.mapStats?.length) return false;
+  const startsAt = data.startsAt;
+  // Three hours covers a live series; a page that still has no stats after that is
+  // a walkover or a blank fixture, and re-queueing it would only eat a run's slots.
+  return typeof startsAt === 'number' && startsAt <= Date.now() && Date.now() - startsAt < 3 * HOUR_MS;
+};
 
 async function clearQueued(env, ids) {
   if (!ids.length) return;

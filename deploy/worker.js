@@ -85,7 +85,15 @@ async function markSkipped(env, ids) {
     ).bind(id, Date.now()).run();
   }
 }
-var staleDetail = (detail) => Boolean(detail) && detail.data?.mapStats === void 0;
+var HOUR_MS = 60 * 60 * 1e3;
+var staleDetail = (detail) => {
+  if (!detail) return false;
+  const data = detail.data ?? {};
+  if (data.mapStats === void 0) return true;
+  if (data.stats?.length || data.mapStats?.length) return false;
+  const startsAt = data.startsAt;
+  return typeof startsAt === "number" && startsAt <= Date.now() && Date.now() - startsAt < 3 * HOUR_MS;
+};
 async function clearQueued(env, ids) {
   if (!ids.length) return;
   await ensureSchema(env);

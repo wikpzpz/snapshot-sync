@@ -58,7 +58,10 @@ async function detailIds(matches: MatchCard[]): Promise<number[]> {
     console.warn(`  detail queue unavailable: ${String(error).slice(0, 80)}`);
   }
 
-  return [...new Set([...queued, ...live])].slice(0, DETAIL_LIMIT);
+  // Live pages come first: a busy queue must never starve a match that is being
+  // played right now, because its veto, maps and stats change every few minutes.
+  const ids = [...new Set([...live, ...queued])];
+  return ids.slice(0, Math.max(DETAIL_LIMIT, live.length));
 }
 
 /**

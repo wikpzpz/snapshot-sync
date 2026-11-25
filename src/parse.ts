@@ -383,7 +383,10 @@ function numberOf(text: string | null): number | null {
  */
 function parseVeto($: Doc): MatchVeto | null {
   const box = $('.veto-box.real-veto-only').first();
-  const text = clean($('.veto-box:not(.real-veto-only) .padding').first().text());
+  // The info box ("Best of 3 (Online)") is a plain `.veto-box`; a fixture without an
+  // announced veto also carries a `.simulated-veto` box with map win chances, which
+  // is printed before the info box in the page and must not be mistaken for the veto.
+  const text = clean($('.veto-box:not(.real-veto-only):not(.simulated-veto) .padding').first().text());
   const steps: VetoStep[] = [];
 
   if (box.length) {
@@ -406,6 +409,9 @@ function parseVeto($: Doc): MatchVeto | null {
   }
 
   if (!text && steps.length === 0) return null;
+  // A fixture whose veto has not happened yet prints a "Veto simulation" box with
+  // map win chances; those lines are guesses, not this match's veto.
+  if (steps.length === 0 && /veto simulation/i.test(text ?? '')) return null;
   return { text, steps };
 }
 
