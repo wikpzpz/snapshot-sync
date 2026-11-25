@@ -516,6 +516,21 @@ async function handleApi(request, url, env) {
     const key = request.headers.get('x-push-key') ?? '';
     if (!env.PUSH_KEY || key !== env.PUSH_KEY) return json({ error: 'Unauthorized.' }, 401);
     const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit') ?? 20) || 20));
+
+    // ?warm=1 fills the queue with matches that have no details yet (newest
+    // first), so the whole fixture list fills in run by run instead of waiting
+    // for someone to open each match.
+    if (url.searchParams.get('warm') === '1') {
+      const [matches, results] = await Promise.all([readSnapshot(env, 'matches'), readSnapshot(env, 'results')]);
+      const cached = new Set(((await env.DB.prepare('SELECT id FROM details').all()).results ?? []).map((row) => row.id));
+      const pending = new Set(await queuedDetailIds(env, 100));
+      const candidates = [...(matches?.data ?? []), ...(results?.data ?? [])]
+        .filter((row) => row?.id != null && !cached.has(row.id) && !pending.has(row.id))
+        .sort((a, b) => (b.startsAt ?? 0) - (a.startsAt ?? 0))
+        .slice(0, limit);
+      for (const row of candidates) await queueDetail(env, row.id);
+    }
+
     return json({ ids: await queuedDetailIds(env, limit), at: Date.now() });
   }
 

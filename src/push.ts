@@ -39,7 +39,8 @@ async function detailIds(matches: MatchCard[]): Promise<number[]> {
 
   let queued: number[] = [];
   try {
-    const res = await fetch(`${SITE_URL}/api/detail-queue?limit=${DETAIL_LIMIT}`, {
+    // warm=1 lets the Worker top the queue up with matches nobody opened yet.
+    const res = await fetch(`${SITE_URL}/api/detail-queue?limit=${DETAIL_LIMIT}&warm=1`, {
       headers: { 'x-push-key': await pushKey() },
     });
     if (res.ok) queued = ((await res.json()) as { ids?: number[] }).ids ?? [];
